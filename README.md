@@ -1,93 +1,202 @@
-# The Shop — handmade goods e-commerce
+# Comet Tail Crafts 🐱☄️
 
-A small, self-owned e-commerce site for selling handmade goods (blankets, crochet, etc.).
-Storefront + CMS/admin + cart + Stripe checkout + inventory, all in one codebase.
+A small, self-owned e-commerce site for selling handmade goods (blankets, crochet,
+etc.) — storefront + CMS/admin + cart + Stripe checkout + inventory, all in one
+codebase. Space/cat theme.
 
-**Stack:** Next.js (App Router, TypeScript) · SQLite + Prisma · Stripe Checkout · Tailwind CSS · NextAuth (Auth.js).
+**Stack:** Next.js 16 (App Router, TypeScript) · SQLite + Prisma · Stripe Checkout
+· Tailwind CSS v4 · NextAuth (Auth.js v5).
 
-See [`PLAN.md`](./PLAN.md) for the full feature spec.
+> **Coming back after a while?** Jump to [Returning to this project](#returning-to-this-project)
+> for the "get it running again" cheat sheet. Run `make help` to list every command.
 
-## Features
+---
 
-- **Storefront** — home, catalog with category filter + search, product detail with image gallery and variant picker, cart (localStorage), Stripe checkout, order confirmation.
-- **Admin** (`/admin`, login-protected) — dashboard with low-stock alerts, product/variant/category management with image upload, order list + detail with status updates.
-- **Inventory** — per-variant stock; auto-decrements when an order is paid (via Stripe webhook); shows "Sold out" at zero (handles one-of-a-kind items).
+## What it does
 
-## Local setup
+- **Storefront** — home, catalog with category filter + search, product detail
+  with image gallery + variant picker + live stock, cart (localStorage), Stripe
+  checkout, order confirmation.
+- **Admin** (`/admin`, login-protected):
+  - Dashboard with low-stock alerts
+  - Products: create/edit/delete, multiple variants (price + stock each), image upload
+  - Categories
+  - Orders: status filter, email search, CSV export, per-order status updates
+  - **Users**: change your password, add/remove admins, customers list
+  - **Settings**: shop name/tagline/contact email + shipping (flat rate + optional
+    free-shipping threshold)
+- **Inventory** — per-variant stock; auto-decrements when an order is paid (via the
+  Stripe webhook); shows "Sold out" at zero (handles one-of-a-kind items).
+
+See [`PLAN.md`](./PLAN.md) for the original spec and [`DEPLOY.md`](./DEPLOY.md) for
+the production/hosting plan.
+
+---
+
+## Quick start (local development)
+
+Requires Node 22+.
 
 ```bash
-npm install
-cp .env.example .env          # then fill in values (see below)
-npx prisma migrate dev        # create the SQLite database
-npm run db:seed               # sample categories, products, and an admin user
-npm run dev                   # http://localhost:3000
+make setup     # installs deps, copies .env, runs migrations, seeds sample data
+# → edit .env to set AUTH_SECRET (npx auth secret) and admin creds
+make dev       # http://localhost:3000
 ```
 
-The seed prints the admin login (default `admin@example.com` / `changeme123`).
-Sign in at **`/admin`**. Change these via `ADMIN_EMAIL` / `ADMIN_PASSWORD` before seeding.
+Default seeded admin: **`admin@example.com` / `changeme123`** → sign in at
+**`/admin`**. Change `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env` before seeding, or
+change the password later in the admin Users page.
 
-### Environment variables
+### Everyday commands (`make help` for all)
 
-| Variable | What it's for |
+| Command | What it does |
 |---|---|
-| `DATABASE_URL` | SQLite file path, e.g. `file:./dev.db` |
-| `AUTH_SECRET` | NextAuth signing secret. Generate: `npx auth secret` |
-| `STRIPE_SECRET_KEY` | Stripe API key (test or live) |
-| `STRIPE_WEBHOOK_SECRET` | Signing secret for the Stripe webhook |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Admin account created by the seed |
+| `make dev` | Dev server (hot reload) |
+| `make build` / `make start` | Production build / run it locally |
+| `make lint` / `make typecheck` | ESLint / TypeScript check |
+| `make db-migrate` | Create + apply a new dev migration |
+| `make db-seed` | Seed sample data + admin (**dev only**) |
+| `make db-studio` | Browse/edit the DB in Prisma Studio |
+| `make db-reset` | Wipe local DB, re-migrate, re-seed (**dev only**) |
+| `make docker-run` | Build + run the prod image locally on :3002 |
+| `make docker-logs` / `make docker-stop` | Tail / stop the local container |
 
-## Stripe (test mode)
+---
 
-1. Create a free Stripe account → copy your **test** secret key into `STRIPE_SECRET_KEY`.
-2. Forward webhooks to your local app with the Stripe CLI:
+## Environment variables
+
+Set in `.env` (copy from `.env.example`). Never commit `.env`.
+
+| Variable | Required | What it's for |
+|---|---|---|
+| `DATABASE_URL` | yes | SQLite path, e.g. `file:./dev.db` (prod: `file:/app/data/prod.db`) |
+| `AUTH_SECRET` | yes | NextAuth signing secret. Generate: `npx auth secret` or `openssl rand -base64 32` |
+| `AUTH_URL` | prod | Public URL, e.g. `https://shop.example.com` |
+| `AUTH_TRUST_HOST` | prod | `true` for self-hosting (also hard-coded via `trustHost` in `src/auth.config.ts`) |
+| `STRIPE_SECRET_KEY` | for checkout | Stripe API key (test or live) |
+| `STRIPE_WEBHOOK_SECRET` | for checkout | Signing secret for the Stripe webhook |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | first run | Admin account created by the seed / `ensure-admin` |
+
+---
+
+## Stripe checkout (test mode)
+
+1. Create a Stripe account → put your **test** secret key in `STRIPE_SECRET_KEY`.
+2. Forward webhooks locally:
    ```bash
    stripe listen --forward-to localhost:3000/api/webhooks/stripe
    ```
-   Copy the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET`.
-3. Checkout uses Stripe-hosted Checkout. Test card: `4242 4242 4242 4242`, any future expiry/CVC.
-4. On successful payment Stripe calls the webhook, which marks the order **PAID** and decrements inventory.
+   Put the printed `whsec_...` in `STRIPE_WEBHOOK_SECRET`.
+3. Checkout uses Stripe-hosted Checkout. Test card `4242 4242 4242 4242`, any future
+   expiry/CVC.
+4. On payment, the webhook marks the order **PAID** and decrements inventory.
 
-Shipping is a flat rate (`FLAT_SHIPPING_CENTS` in `src/lib/stripe.ts`). For automatic sales tax, enable Stripe Tax and add `automatic_tax` to the Checkout session in `src/app/api/checkout/route.ts`.
+Shipping is configured in the admin **Settings** page (flat rate + optional
+free-shipping threshold), read at checkout in `src/app/api/checkout/route.ts`.
+For sales tax, enable Stripe Tax and add `automatic_tax` to the Checkout session.
 
-## Deployment (Hetzner / any small VPS)
+---
 
-This runs as a single Node process with a SQLite file on disk — ideal for one cheap box (~€4/mo).
+## Running the production image locally
 
 ```bash
-# on the server (Node 20+ installed)
-git clone <repo> && cd emma-shop
-npm ci
-cp .env.example .env          # set DATABASE_URL, AUTH_SECRET, Stripe keys, admin creds
-npx prisma migrate deploy     # apply migrations (npm run db:deploy)
-npm run db:seed               # first time only — creates admin user
-npm run build
-npm start                     # serves on :3000
+make docker-run    # builds the image, runs it on http://localhost:3002
+make docker-logs   # watch boot: migrate → ensure-admin → server ready
+make docker-stop
 ```
 
-Then:
-- Put **Caddy** or **Nginx** in front for HTTPS (Caddy auto-provisions TLS — easiest).
-- Run the app under a process manager (`pm2`, a `systemd` unit, or Docker) so it restarts on reboot/crash.
-- In the Stripe Dashboard, add a **webhook endpoint** → `https://yourdomain/api/webhooks/stripe` (event: `checkout.session.completed`) and put its signing secret in `STRIPE_WEBHOOK_SECRET`.
+The image runs `next start` with `node_modules` present so the `better-sqlite3`
+native binding + Prisma CLI are available. The entrypoint
+(`docker-entrypoint.sh`) runs `prisma migrate deploy`, then `ensure-admin`, then
+starts the server.
 
-### Backups & notes
+---
 
-- The whole database is the single SQLite file (`DATABASE_URL`). Back it up by copying that file (cron + offsite copy).
-- Uploaded product images live in `public/uploads/` — back these up too (they're git-ignored). On a single VPS this is fine; if you ever move to multi-server or serverless hosting, switch uploads to object storage (S3/R2) and the DB to Postgres (the Prisma schema ports over with minimal changes).
+## Deploying to production
+
+Full plan in [`DEPLOY.md`](./DEPLOY.md). Summary: the shop runs as its own
+Docker Compose stack on a Hetzner box, behind the existing **deadly** Caddy
+(which handles Let's Encrypt TLS automatically). The two projects are
+independent — they share only a Docker network and one Caddy route.
+
+**One-time on the box / DNS:**
+1. `docker network create web`
+2. Point DNS `shop.<domain>` (A record) → the server IP.
+3. Put a production `.env` on the box (AUTH_SECRET, **live** Stripe keys, admin creds, `AUTH_URL=https://shop.<domain>`).
+4. In the **deadly** repo: add a Caddy block `shop.<domain> { reverse_proxy emma-shop:3000 }` and attach Caddy to the `web` network → its CI redeploys Caddy.
+5. Stripe Dashboard: add webhook `https://shop.<domain>/api/webhooks/stripe` (event `checkout.session.completed`).
+
+**Each deploy:**
+```bash
+make deploy REMOTE_HOST=<your-ssh-host>   # builds, pushes to GHCR, pulls + restarts on the box
+```
+The container entrypoint applies migrations automatically. (Or wire a GitHub
+Action to build→GHCR→deploy; see DEPLOY.md.)
+
+### Backups
+- **Database** = the single SQLite file on the `emma_db` volume. Cron a copy off-box.
+- **Uploaded images** = the `emma_uploads` volume (`/app/public/uploads`). Back these up too.
+
+---
 
 ## Project layout
 
 ```
-prisma/schema.prisma        data model
-prisma/seed.ts              sample data + admin user
-src/lib/db.ts               Prisma client (SQLite adapter)
-src/lib/queries.ts          storefront data access
-src/lib/cart.tsx            client cart (localStorage)
-src/lib/stripe.ts           Stripe client + shipping config
-src/auth.ts, auth.config.ts NextAuth setup (admin login)
-src/app/page.tsx, products/, cart/, order/  storefront pages
-src/app/admin/*             admin dashboard, products, categories, orders
-src/app/admin/actions.ts    admin server actions (CRUD)
-src/app/api/checkout        creates Stripe Checkout session
-src/app/api/webhooks/stripe payment → order + inventory
-src/app/api/admin/upload    product image upload
+prisma/schema.prisma          data model (Product, Variant, Category, Order, AdminUser, StoreSettings)
+prisma/seed.ts                sample data + admin (dev only)
+prisma/ensure-admin.ts        idempotent admin bootstrap (runs on container start)
+src/lib/db.ts                 Prisma client (SQLite driver adapter)
+src/lib/queries.ts            storefront data access
+src/lib/settings.ts           store settings accessor (singleton)
+src/lib/cart.tsx              client cart (localStorage)
+src/lib/stripe.ts             Stripe client
+src/auth.ts, auth.config.ts   NextAuth setup (admin login; trustHost for prod)
+middleware.ts                 gates /admin routes
+src/app/                      storefront pages (page.tsx, products/, cart/, order/)
+src/app/admin/                admin: dashboard, products, categories, orders, users, settings
+src/app/admin/actions.ts      admin server actions (CRUD, settings, users)
+src/app/api/checkout/         creates the Stripe Checkout session (reads shipping settings)
+src/app/api/webhooks/stripe/  payment → order + inventory decrement
+src/app/api/admin/upload/     product image upload
+src/app/api/admin/orders/export/  orders CSV export
+Dockerfile, docker-compose.yml, docker-entrypoint.sh   containerization
+```
+
+---
+
+## Returning to this project
+
+After a long break, to get back up and running locally:
+
+```bash
+git pull
+make install        # refresh deps
+make db-migrate     # apply any new migrations (or `make db-reset` for a clean dev DB)
+make dev            # http://localhost:3000  — admin at /admin
+```
+
+If something's off, see Troubleshooting below, then `make help` for all commands.
+The architecture and deploy details live in [`DEPLOY.md`](./DEPLOY.md).
+
+---
+
+## Troubleshooting / gotchas (learned the hard way)
+
+- **Admin login redirects back / `UntrustedHost` in production.** NextAuth needs a
+  trusted host in prod. We set `trustHost: true` in `src/auth.config.ts` and
+  `AUTH_TRUST_HOST=true` in the prod env. If you fork the auth setup, keep this.
+- **Changes to the app don't show up when testing the prod build.** A stale
+  `next start` / container may still own the port. Check: `ss -ltnp | grep :3000`
+  (or `:3002` for the container); kill the old PID. The dev server (`make dev`)
+  hot-reloads and avoids this.
+- **Favicon/logo looks old.** Browsers cache favicons hard — hard-refresh or open
+  a new tab. The files live in `src/app/favicon.ico` + `src/app/icon.png`.
+- **Docker build fails needing a database.** The root layout is `force-dynamic`
+  precisely so the build never touches the DB. Don't remove that without
+  providing a DB at build time.
+- **`better-sqlite3` errors in the container.** It's a native module compiled in
+  the Docker build stage; the runtime stage must keep `node_modules` (we don't use
+  Next `standalone` for this reason). Rebuild the image after dependency changes.
+- **Empty catalog in production.** Expected — prod starts with only the admin user
+  (sample products are dev-only via `make db-seed`). Add real products in `/admin`.
 ```

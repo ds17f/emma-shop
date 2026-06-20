@@ -14,5 +14,6 @@ npm-debug.log*
 PLAN.md
 DEPLOY.md
 README.md
+Makefile
 # local scratch
 coverage
