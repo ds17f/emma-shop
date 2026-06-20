@@ -1,0 +1,83 @@
+import { NextResponse } from "next/server";
+import type Stripe from "stripe";
+import { prisma } from "@/lib/db";
+import { requireStripe } from "@/lib/stripe";
+
+// Stripe needs the raw request body to verify the signature.
+export async function POST(req: Request) {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    return NextResponse.json(
+      { error: "Webhook secret not configured" },
+      { status: 500 },
+    );
+  }
+
+  let stripe;
+  try {
+    stripe = requireStripe();
+  } catch {
+    return NextResponse.json({ error: "Stripe not configured" }, { status: 500 });
+  }
+
+  const signature = req.headers.get("stripe-signature");
+  if (!signature) {
+    return NextResponse.json({ error: "Missing signature" }, { status: 400 });
+  }
+
+  const payload = await req.text();
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(payload, signature, secret);
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Invalid signature: ${err instanceof Error ? err.message : ""}` },
+      { status: 400 },
+    );
+  }
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const orderId = session.metadata?.orderId ?? session.client_reference_id;
+    if (orderId) {
+      await fulfillOrder(orderId, session);
+    }
+  }
+
+  return NextResponse.json({ received: true });
+}
+
+async function fulfillOrder(orderId: string, session: Stripe.Checkout.Session) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+  // Idempotency: only fulfill a still-pending order once.
+  if (!order || order.status !== "PENDING") return;
+
+  const shipping =
+    session.collected_information?.shipping_details ??
+    session.customer_details;
+
+  await prisma.$transaction([
+    prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: "PAID",
+        email: session.customer_details?.email ?? "",
+        customerName: session.customer_details?.name ?? "",
+        shippingAddress: JSON.stringify(shipping ?? {}),
+        totalCents: session.amount_total ?? order.totalCents,
+      },
+    }),
+    // Decrement inventory for each purchased variant.
+    ...order.items
+      .filter((i) => i.variantId)
+      .map((i) =>
+        prisma.variant.update({
+          where: { id: i.variantId! },
+          data: { stock: { decrement: i.quantity } },
+        }),
+      ),
+  ]);
+}

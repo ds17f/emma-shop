@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-display: var(--ff-display);
+  --font-sans: var(--ff-body);
+}
+
+@theme {
+  /* Comet Tail Crafts — palette sampled from the logo */
+  --color-cream: #faeede; /* warm cream page bg */
+  --color-ink: #08172b; /* deep navy ink (text + borders) */
+
+  --color-space: #061123; /* deepest space navy */
+  --color-space2: #122c44; /* lifted navy */
+  --color-star: #f7d29f; /* starlight gold */
+
+  --color-brand: #e26a57; /* coral comet */
+  --color-brand-dark: #c9503d;
+  --color-teal: #469090; /* aurora teal */
+  --color-teal-dark: #2f5255;
+  --color-sun: #f0b24a; /* golden star */
+  --color-grape: #6d5a9c; /* cosmic purple */
+  --color-tangerine: #e79f5d; /* comet tail orange */
+  --color-sky: #4ba0c6; /* nebula blue */
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--ff-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--ff-display), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Chunky bordered buttons with a hard offset shadow */
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full border-2 border-ink px-6 py-3
+    text-sm font-bold transition-all duration-100
+    shadow-[3px_3px_0_0_var(--color-ink)]
+    hover:-translate-y-0.5 hover:shadow-[4px_5px_0_0_var(--color-ink)]
+    active:translate-y-0.5 active:shadow-[1px_1px_0_0_var(--color-ink)]
+    disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-[3px_3px_0_0_var(--color-ink)];
+}
+@utility btn-primary {
+  @apply btn bg-brand text-white hover:bg-brand-dark;
+}
+@utility btn-teal {
+  @apply btn bg-teal text-white hover:bg-teal-dark;
+}
+@utility btn-sun {
+  @apply btn bg-sun text-ink;
+}
+@utility btn-white {
+  @apply btn bg-white text-ink;
+}
+@utility btn-sm {
+  @apply px-4 py-2 text-xs;
+}
+
+/* Twinkly starfield overlay for cosmic sections */
+@utility stars {
+  background-image:
+    radial-gradient(2px 2px at 15% 25%, #ffffff, transparent),
+    radial-gradient(1px 1px at 55% 65%, #ffffff, transparent),
+    radial-gradient(1.5px 1.5px at 80% 18%, var(--color-star), transparent),
+    radial-gradient(1px 1px at 35% 80%, #ffffff, transparent),
+    radial-gradient(2px 2px at 90% 55%, var(--color-star), transparent),
+    radial-gradient(1px 1px at 70% 35%, #ffffff, transparent),
+    radial-gradient(1.5px 1.5px at 25% 55%, var(--color-star), transparent);
+  background-repeat: repeat;
+  background-size: 320px 320px;
+}
+
+/* Bordered cards */
+@utility card {
+  @apply rounded-3xl border-2 border-ink bg-white shadow-[4px_4px_0_0_var(--color-ink)];
+}
+
+@utility chip {
+  @apply rounded-full border-2 border-ink px-4 py-1.5 text-sm font-bold transition-all
+    hover:-translate-y-0.5;
+}
+
+@utility input {
+  @apply w-full rounded-2xl border-2 border-ink bg-white px-4 py-2.5 text-sm font-medium
+    focus:outline-none focus:ring-2 focus:ring-grape/40;
+}
