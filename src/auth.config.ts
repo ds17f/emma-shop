@@ -2,6 +2,9 @@ import type { NextAuthConfig } from "next-auth";
 
 // Edge-safe config (no DB / native deps) — imported by middleware.
 export const authConfig = {
+  // Required for self-hosted production (behind a proxy / non-Vercel host).
+  // Can also be set via the AUTH_TRUST_HOST=true environment variable.
+  trustHost: true,
   pages: { signIn: "/admin/login" },
   callbacks: {
     authorized({ auth, request }) {

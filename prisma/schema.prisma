@@ -99,3 +99,17 @@ model AdminUser {
 
   createdAt DateTime @default(now())
 }
+
+// Singleton row (id = "store") holding shop-wide settings editable from the admin.
+model StoreSettings {
+  id           String @id @default("store")
+  shopName     String @default("Comet Tail Crafts")
+  tagline      String @default("Handmade goods from across the galaxy")
+  contactEmail String @default("")
+
+  // Shipping (cents). freeShippingThresholdCents = null disables the free tier.
+  shippingFlatCents          Int  @default(700)
+  freeShippingThresholdCents Int?
+
+  updatedAt DateTime @updatedAt
+}

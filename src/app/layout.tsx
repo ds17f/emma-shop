@@ -3,7 +3,7 @@ import { Fredoka, Nunito } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart";
 import { Header } from "@/components/Header";
-import { SHOP_NAME, SHOP_TAGLINE } from "@/lib/brand";
+import { getSettings } from "@/lib/settings";
 
 const fredoka = Fredoka({
   subsets: ["latin"],
@@ -16,16 +16,21 @@ const nunito = Nunito({
   variable: "--ff-body",
 });
 
-export const metadata: Metadata = {
-  title: `${SHOP_NAME} — Handmade Goods`,
-  description: SHOP_TAGLINE,
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const s = await getSettings();
+  return {
+    title: `${s.shopName} — Handmade Goods`,
+    description: s.tagline,
+  };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const settings = await getSettings();
+
   return (
     <html
       lang="en"
@@ -33,12 +38,13 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col">
         <CartProvider>
-          <Header />
+          <Header shopName={settings.shopName} />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
             {children}
           </main>
           <footer className="stars mt-8 border-t-2 border-ink bg-space py-6 text-center text-sm font-semibold text-white/80">
-            © {new Date().getFullYear()} {SHOP_NAME} · Handmade across the galaxy ☄️🐱
+            © {new Date().getFullYear()} {settings.shopName} · Handmade across the
+            galaxy ☄️🐱
           </footer>
         </CartProvider>
       </body>

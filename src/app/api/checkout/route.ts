@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireStripe, FLAT_SHIPPING_CENTS } from "@/lib/stripe";
+import { requireStripe } from "@/lib/stripe";
+import { getSettings } from "@/lib/settings";
 
 const bodySchema = z.object({
   items: z
@@ -106,6 +107,13 @@ export async function POST(req: Request) {
     },
   });
 
+  // Shipping from store settings: free over the threshold, otherwise the flat rate.
+  const settings = await getSettings();
+  const qualifiesFree =
+    settings.freeShippingThresholdCents != null &&
+    totalCents >= settings.freeShippingThresholdCents;
+  const shippingCents = qualifiesFree ? 0 : settings.shippingFlatCents;
+
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     line_items: lineItems,
@@ -116,8 +124,8 @@ export async function POST(req: Request) {
       {
         shipping_rate_data: {
           type: "fixed_amount",
-          display_name: "Standard shipping",
-          fixed_amount: { amount: FLAT_SHIPPING_CENTS, currency: "usd" },
+          display_name: qualifiesFree ? "Free shipping" : "Standard shipping",
+          fixed_amount: { amount: shippingCents, currency: "usd" },
         },
       },
     ],

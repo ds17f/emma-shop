@@ -13,6 +13,3 @@ export function requireStripe(): Stripe {
   }
   return stripe;
 }
-
-/** Flat-rate shipping in cents. Adjust or replace with weight/region logic later. */
-export const FLAT_SHIPPING_CENTS = 700;

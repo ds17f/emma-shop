@@ -5,9 +5,14 @@ import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { SHOP_LOGO } from "@/lib/brand";
 
-export function Header() {
+export function Header({ shopName }: { shopName: string }) {
   const { count } = useCart();
   const [logoOk, setLogoOk] = useState(true);
+
+  // Color the last word of the shop name as a playful accent.
+  const words = shopName.trim().split(" ");
+  const lastWord = words.length > 1 ? words.pop() : "";
+  const leadWords = words.join(" ");
 
   return (
     <header className="stars sticky top-0 z-20 border-b-2 border-ink bg-space">
@@ -23,7 +28,8 @@ export function Header() {
             />
           )}
           <span className="font-display text-xl font-bold tracking-tight text-white sm:text-2xl">
-            Comet&nbsp;Tail&nbsp;<span className="text-brand">Crafts</span>
+            {leadWords}{" "}
+            {lastWord && <span className="text-brand">{lastWord}</span>}
             <span className="text-teal"> ☄️</span>
           </span>
         </Link>

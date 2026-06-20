@@ -3,12 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
+import { SETTINGS_ID } from "@/lib/settings";
 
 async function requireAdmin() {
   const session = await auth();
   if (!session?.user) throw new Error("Unauthorized");
+  return session;
+}
+
+function dollarsToCents(value: FormDataEntryValue | null): number {
+  return Math.max(0, Math.round(parseFloat(String(value || "0")) * 100));
 }
 
 function slugify(input: string) {
@@ -185,4 +192,81 @@ export async function updateOrderStatus(formData: FormData) {
   await prisma.order.update({ where: { id }, data: { status } });
   revalidatePath("/admin/orders");
   revalidatePath(`/admin/orders/${id}`);
+}
+
+// ---------- Store & shipping settings ----------
+
+export async function updateSettings(formData: FormData) {
+  await requireAdmin();
+  const freeShippingEnabled = formData.get("freeShippingEnabled") === "on";
+  await prisma.storeSettings.upsert({
+    where: { id: SETTINGS_ID },
+    create: { id: SETTINGS_ID },
+    update: {
+      shopName: String(formData.get("shopName") ?? "").trim() || "Comet Tail Crafts",
+      tagline: String(formData.get("tagline") ?? "").trim(),
+      contactEmail: String(formData.get("contactEmail") ?? "").trim(),
+      shippingFlatCents: dollarsToCents(formData.get("shippingFlat")),
+      freeShippingThresholdCents: freeShippingEnabled
+        ? dollarsToCents(formData.get("freeShippingThreshold"))
+        : null,
+    },
+  });
+  revalidatePath("/admin/settings");
+  revalidatePath("/", "layout");
+  redirect("/admin/settings?ok=1");
+}
+
+// ---------- Admin users & customers ----------
+
+export async function changeOwnPassword(formData: FormData) {
+  const session = await requireAdmin();
+  const email = session.user?.email ?? "";
+  const current = String(formData.get("currentPassword") ?? "");
+  const next = String(formData.get("newPassword") ?? "");
+
+  if (next.length < 8) redirect("/admin/users?error=length");
+
+  const user = await prisma.adminUser.findUnique({ where: { email } });
+  if (!user || !(await bcrypt.compare(current, user.passwordHash))) {
+    redirect("/admin/users?error=current");
+  }
+  await prisma.adminUser.update({
+    where: { email },
+    data: { passwordHash: await bcrypt.hash(next, 10) },
+  });
+  redirect("/admin/users?ok=password");
+}
+
+export async function createAdminUser(formData: FormData) {
+  await requireAdmin();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const name = String(formData.get("name") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+
+  if (!email || password.length < 8) redirect("/admin/users?error=invalid");
+  const existing = await prisma.adminUser.findUnique({ where: { email } });
+  if (existing) redirect("/admin/users?error=exists");
+
+  await prisma.adminUser.create({
+    data: { email, name, passwordHash: await bcrypt.hash(password, 10) },
+  });
+  revalidatePath("/admin/users");
+  redirect("/admin/users?ok=created");
+}
+
+export async function deleteAdminUser(formData: FormData) {
+  const session = await requireAdmin();
+  const id = String(formData.get("id"));
+  const target = await prisma.adminUser.findUnique({ where: { id } });
+  if (!target) return;
+
+  // Guard: can't delete yourself or the last remaining admin.
+  if (target.email === session.user?.email) redirect("/admin/users?error=self");
+  const count = await prisma.adminUser.count();
+  if (count <= 1) redirect("/admin/users?error=last");
+
+  await prisma.adminUser.delete({ where: { id } });
+  revalidatePath("/admin/users");
+  redirect("/admin/users?ok=deleted");
 }
