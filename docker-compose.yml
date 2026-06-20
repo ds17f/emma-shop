@@ -1,0 +1,34 @@
+# emma-shop's own stack. On the server it joins the shared "web" network so
+# deadly's Caddy can reverse_proxy to `emma-shop:3000`. It never binds 80/443.
+#
+# One-time on the host:  docker network create web
+# Secrets come from .env (AUTH_SECRET, STRIPE_*, ADMIN_*) — never committed.
+services:
+  emma-shop:
+    image: ghcr.io/ds17f/emma-shop:${IMAGE_TAG:-latest}
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      # SQLite lives on the persistent volume below.
+      - DATABASE_URL=file:/app/data/prod.db
+      # Public URL of the shop — used by NextAuth. Override per deployment.
+      - AUTH_URL=${AUTH_URL:-https://shop.example.com}
+      - AUTH_TRUST_HOST=true
+    volumes:
+      - emma_db:/app/data
+      - emma_uploads:/app/public/uploads
+    expose:
+      - "3000"
+    networks:
+      - web
+
+volumes:
+  emma_db:
+  emma_uploads:
+
+networks:
+  web:
+    external: true

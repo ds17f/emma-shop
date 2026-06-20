@@ -1,0 +1,18 @@
+node_modules
+.next
+.git
+.gitignore
+*.db
+*.db-journal
+.env
+.env.*
+!.env.example
+Untitled.png
+npm-debug.log*
+.DS_Store
+# docs / planning — not needed in the image
+PLAN.md
+DEPLOY.md
+README.md
+# local scratch
+coverage

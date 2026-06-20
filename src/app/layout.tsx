@@ -16,6 +16,10 @@ const nunito = Nunito({
   variable: "--ff-body",
 });
 
+// Storefront is data-driven (products, settings) — render dynamically rather
+// than prerendering at build time (which would require a database during build).
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSettings();
   return {
