@@ -5,8 +5,10 @@
 # Per-ENVIRONMENT (GitHub Environments `beta` / `prod`):
 #   secrets: AUTH_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD,
 #            STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET   (Stripe optional — empty = checkout off)
+#            RESEND_API_KEY                             (email optional — empty = no order emails)
 #   vars:    SHOP_ADDRESS  (public FQDN, e.g. beta.comettail.shop)
 #            AUTH_URL      (e.g. https://beta.comettail.shop)
+#            EMAIL_FROM    (verified sender, e.g. "Comet Tail Crafts <orders@comettail.shop>")
 # Repo-level secrets (shared): HCLOUD_TOKEN, SSH_PRIVATE_KEY,
 #            GODADDY_KEY, GODADDY_SECRET   (GoDaddy only needed for update_dns)
 #
@@ -113,6 +115,8 @@ jobs:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
         run: |
           if [ -z "$AUTH_SECRET" ] || [ -z "$AUTH_URL" ]; then
             echo "::error::AUTH_SECRET (env secret) or AUTH_URL (env var) missing for '${{ inputs.environment }}'."
@@ -130,6 +134,8 @@ jobs:
             "ADMIN_PASSWORD=${ADMIN_PASSWORD}" \
             "STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}" \
             "STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}" \
+            "RESEND_API_KEY=${RESEND_API_KEY}" \
+            "EMAIL_FROM=${EMAIL_FROM}" \
             | ssh -i ~/.ssh/id_deploy "$SERVER" "cat > $REMOTE_PATH/.env && chmod 600 $REMOTE_PATH/.env"
           echo "Wrote $REMOTE_PATH/.env (mode 600)"
 

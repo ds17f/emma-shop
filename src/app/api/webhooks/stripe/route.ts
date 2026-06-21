@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { requireStripe } from "@/lib/stripe";
+import { sendOrderEmails } from "@/lib/email";
+import { getSettings } from "@/lib/settings";
 
 // Stripe needs the raw request body to verify the signature.
 export async function POST(req: Request) {
@@ -59,16 +61,15 @@ async function fulfillOrder(orderId: string, session: Stripe.Checkout.Session) {
     session.collected_information?.shipping_details ??
     session.customer_details;
 
+  const email = session.customer_details?.email ?? "";
+  const customerName = session.customer_details?.name ?? "";
+  const shippingAddress = JSON.stringify(shipping ?? {});
+  const totalCents = session.amount_total ?? order.totalCents;
+
   await prisma.$transaction([
     prisma.order.update({
       where: { id: orderId },
-      data: {
-        status: "PAID",
-        email: session.customer_details?.email ?? "",
-        customerName: session.customer_details?.name ?? "",
-        shippingAddress: JSON.stringify(shipping ?? {}),
-        totalCents: session.amount_total ?? order.totalCents,
-      },
+      data: { status: "PAID", email, customerName, shippingAddress, totalCents },
     }),
     // Decrement inventory for each purchased variant.
     ...order.items
@@ -80,4 +81,13 @@ async function fulfillOrder(orderId: string, session: Stripe.Checkout.Session) {
         }),
       ),
   ]);
+
+  // Fire confirmation emails after the order is committed PAID. sendOrderEmails
+  // never throws, so a mail outage can't fail the webhook or trigger a Stripe
+  // retry (which would no-op here anyway, since the order is no longer PENDING).
+  const settings = await getSettings();
+  await sendOrderEmails(
+    { id: order.id, email, customerName, totalCents, shippingAddress, items: order.items },
+    settings,
+  );
 }
