@@ -170,15 +170,15 @@ export function ProductForm({ action, categories, initial }: Props) {
             + Add variant
           </button>
         </div>
-        <div className="space-y-2">
-          <div className="grid grid-cols-[1fr_100px_80px_32px] gap-2 text-xs text-stone-500">
+        <div className="space-y-2 overflow-x-auto">
+          <div className="grid min-w-[26rem] grid-cols-[1fr_100px_80px_32px] gap-2 text-xs text-stone-500">
             <span>Label</span>
             <span>Price ($)</span>
             <span>Stock</span>
             <span />
           </div>
           {variants.map((v, i) => (
-            <div key={i} className="grid grid-cols-[1fr_100px_80px_32px] gap-2">
+            <div key={i} className="grid min-w-[26rem] grid-cols-[1fr_100px_80px_32px] gap-2">
               <input
                 value={v.label}
                 onChange={(e) =>

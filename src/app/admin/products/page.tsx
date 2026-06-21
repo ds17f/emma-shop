@@ -27,6 +27,7 @@ export default async function AdminProducts() {
       {products.length === 0 ? (
         <p className="text-sm text-stone-500">No products yet.</p>
       ) : (
+        <div className="overflow-x-auto">
         <table className="w-full overflow-hidden rounded-lg border border-stone-200 bg-white text-sm">
           <thead className="bg-stone-50 text-left text-stone-500">
             <tr>
@@ -78,6 +79,7 @@ export default async function AdminProducts() {
             })}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

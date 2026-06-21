@@ -88,8 +88,8 @@ export default async function AdminUsers({
         <h2 className="font-display text-lg font-bold">Admin users</h2>
         <ul className="divide-y divide-ink/10">
           {admins.map((a) => (
-            <li key={a.id} className="flex items-center justify-between py-2 text-sm">
-              <span className="font-semibold">
+            <li key={a.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+              <span className="min-w-0 break-all font-semibold">
                 {a.email}
                 {a.email === myEmail && (
                   <span className="ml-2 rounded-full border-2 border-ink bg-sun px-2 py-0.5 text-xs">
@@ -137,6 +137,7 @@ export default async function AdminUsers({
         {customers.length === 0 ? (
           <p className="text-sm font-semibold text-ink/60">No customers yet.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-ink/50">
               <tr>
@@ -157,6 +158,7 @@ export default async function AdminUsers({
                 ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </div>
