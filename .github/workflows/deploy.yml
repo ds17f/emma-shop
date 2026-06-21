@@ -1,0 +1,241 @@
+# Build → GHCR → deploy Comet Tail Crafts to a deadly Hetzner box (beta or prod),
+# fronted by deadly's Caddy. Mirrors deadly's web-deploy: per-environment via
+# GitHub Environments, writes the box .env from secrets, optional GoDaddy DNS.
+#
+# Per-ENVIRONMENT (GitHub Environments `beta` / `prod`):
+#   secrets: AUTH_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD,
+#            STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET   (Stripe optional — empty = checkout off)
+#   vars:    SHOP_ADDRESS  (public FQDN, e.g. beta.comettail.shop)
+#            AUTH_URL      (e.g. https://beta.comettail.shop)
+# Repo-level secrets (shared): HCLOUD_TOKEN, SSH_PRIVATE_KEY,
+#            GODADDY_KEY, GODADDY_SECRET   (GoDaddy only needed for update_dns)
+#
+# The box is selected by Hetzner label env=<environment>. The shared `web`
+# network + deadly's Caddy route for SHOP_ADDRESS must exist there (set deadly's
+# <env> SHOP_ADDRESS and deploy deadly). The GHCR package must be public so the
+# box (no registry auth, same as deadly) can pull it.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        type: choice
+        options: [beta, prod]
+        default: beta
+      update_dns:
+        description: "Point the comettail.shop A record for SHOP_ADDRESS at this server"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  REMOTE_PATH: /opt/emma-shop
+  SSH_USER: deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: image
+        run: echo "tag=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.image.outputs.tag }}
+            ${{ env.IMAGE }}:${{ inputs.environment }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resolve server IP from Hetzner
+        id: server
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          HCLOUD_LABEL: env=${{ inputs.environment }}
+        run: |
+          IP=$(curl -sf -H "Authorization: Bearer $HCLOUD_TOKEN" \
+            "https://api.hetzner.cloud/v1/servers?label_selector=${HCLOUD_LABEL}" \
+            | python3 -c "import sys,json;print(json.load(sys.stdin)['servers'][0]['public_net']['ipv4']['ip'])" 2>/dev/null || true)
+          if [ -z "$IP" ]; then
+            echo "::error::No Hetzner server found for label '${HCLOUD_LABEL}' (check HCLOUD_TOKEN)."
+            exit 1
+          fi
+          echo "ip=${IP}" >> "$GITHUB_OUTPUT"
+          echo "Server IP: ${IP}"
+
+      - name: Set up SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          IP: ${{ steps.server.outputs.ip }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$IP" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Write environment file
+        env:
+          SERVER: ${{ env.SSH_USER }}@${{ steps.server.outputs.ip }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          AUTH_URL: ${{ vars.AUTH_URL }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        run: |
+          if [ -z "$AUTH_SECRET" ] || [ -z "$AUTH_URL" ]; then
+            echo "::error::AUTH_SECRET (env secret) or AUTH_URL (env var) missing for '${{ inputs.environment }}'."
+            exit 1
+          fi
+          ssh -i ~/.ssh/id_deploy "$SERVER" "mkdir -p $REMOTE_PATH"
+          # .env is read by compose for ${AUTH_URL} interpolation AND loaded into
+          # the container via env_file. Stripe vars may be empty (checkout off).
+          printf '%s\n' \
+            "AUTH_SECRET=${AUTH_SECRET}" \
+            "AUTH_URL=${AUTH_URL}" \
+            "ADMIN_EMAIL=${ADMIN_EMAIL}" \
+            "ADMIN_PASSWORD=${ADMIN_PASSWORD}" \
+            "STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}" \
+            "STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}" \
+            | ssh -i ~/.ssh/id_deploy "$SERVER" "cat > $REMOTE_PATH/.env && chmod 600 $REMOTE_PATH/.env"
+          echo "Wrote $REMOTE_PATH/.env (mode 600)"
+
+      - name: Deploy
+        env:
+          SERVER: ${{ env.SSH_USER }}@${{ steps.server.outputs.ip }}
+          TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          scp -i ~/.ssh/id_deploy docker-compose.yml "$SERVER:$REMOTE_PATH/"
+          ssh -i ~/.ssh/id_deploy "$SERVER" bash -s <<SCRIPT
+            set -euo pipefail
+            cd "$REMOTE_PATH"
+            # Shared external network with deadly's Caddy (idempotent).
+            docker network create web 2>/dev/null || true
+            export IMAGE_TAG="$TAG"
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
+            docker compose ps
+          SCRIPT
+          echo ">> Deployed tag $TAG. Entrypoint applies migrations + ensures admin."
+
+      - name: Wait for container
+        env:
+          SERVER: ${{ env.SSH_USER }}@${{ steps.server.outputs.ip }}
+        run: |
+          # Probe the container directly on the box — independent of deadly's
+          # Caddy / public DNS, so this verifies emma-shop itself is serving.
+          ssh -i ~/.ssh/id_deploy "$SERVER" bash -s <<'SCRIPT'
+            set -uo pipefail
+            cd /opt/emma-shop
+            for i in $(seq 1 24); do
+              if docker compose exec -T emma-shop node -e 'fetch("http://localhost:3000").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' 2>/dev/null; then
+                echo "emma-shop container healthy on attempt $i"; exit 0
+              fi
+              echo "  attempt $i/24 — waiting 5s..."; sleep 5
+            done
+            echo "::error::emma-shop container did not become healthy"; docker compose logs --tail 40 emma-shop || true; exit 1
+          SCRIPT
+
+      # Runs BEFORE the public health check: on a fresh host SHOP_ADDRESS may not
+      # resolve to this box yet. Skipped unless update_dns is set.
+      - name: Update DNS (GoDaddy)
+        if: ${{ inputs.update_dns }}
+        env:
+          GODADDY_KEY: ${{ secrets.GODADDY_KEY }}
+          GODADDY_SECRET: ${{ secrets.GODADDY_SECRET }}
+          SHOP_ADDRESS: ${{ vars.SHOP_ADDRESS }}
+          NEW_IP: ${{ steps.server.outputs.ip }}
+        run: |
+          set -euo pipefail
+          DOMAIN="comettail.shop"
+          if [ -z "$SHOP_ADDRESS" ]; then
+            echo "::error::update_dns set but SHOP_ADDRESS variable is empty"; exit 1
+          fi
+          if [ "$SHOP_ADDRESS" = "$DOMAIN" ]; then NAME="@"; else NAME="${SHOP_ADDRESS%.$DOMAIN}"; fi
+
+          echo "==> $SHOP_ADDRESS (name=$NAME) -> $NEW_IP"
+          CURRENT=$(curl -fsS -H "Authorization: sso-key $GODADDY_KEY:$GODADDY_SECRET" \
+            "https://api.godaddy.com/v1/domains/$DOMAIN/records/A/$NAME" | jq -r '.[0].data // empty')
+          if [ "$CURRENT" = "$NEW_IP" ]; then
+            echo "    already $NEW_IP — no change"
+          else
+            echo "    $CURRENT -> $NEW_IP — updating"
+            curl -fsS -X PUT -H "Authorization: sso-key $GODADDY_KEY:$GODADDY_SECRET" \
+              -H "Content-Type: application/json" \
+              -d "[{\"data\":\"$NEW_IP\",\"ttl\":600}]" \
+              "https://api.godaddy.com/v1/domains/$DOMAIN/records/A/$NAME" > /dev/null
+            echo "    OK"
+          fi
+
+          echo "==> Polling 1.1.1.1 for $SHOP_ADDRESS -> $NEW_IP (up to ~5m)"
+          DEADLINE=$(( $(date +%s) + 300 ))
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            RESOLVED=$(dig @1.1.1.1 +short "$SHOP_ADDRESS" A | head -1)
+            [ "$RESOLVED" = "$NEW_IP" ] && { echo "    resolves to $NEW_IP"; break; }
+            echo "    currently '${RESOLVED:-<empty>}', sleeping 15s..."; sleep 15
+          done
+
+      # Public end-to-end check via deadly's Caddy. Warn-only: it only passes once
+      # deadly's <env> Caddy has the SHOP_ADDRESS block + cert (separate step).
+      - name: Public health check
+        if: ${{ vars.SHOP_ADDRESS != '' }}
+        env:
+          URL: https://${{ vars.SHOP_ADDRESS }}
+        run: |
+          echo "Checking $URL (via deadly Caddy)…"
+          for i in $(seq 1 12); do
+            if curl -fsSk "$URL" -o /dev/null 2>/dev/null; then
+              echo "Public check passed on attempt $i"; exit 0
+            fi
+            echo "  attempt $i/12 — waiting 5s..."; sleep 5
+          done
+          echo "::warning::$URL not serving yet — ensure deadly's ${{ inputs.environment }} Caddy has SHOP_ADDRESS=${{ vars.SHOP_ADDRESS }} and was redeployed."
+
+      - name: Summary
+        if: always()
+        env:
+          IP: ${{ steps.server.outputs.ip }}
+          TAG: ${{ steps.image.outputs.tag }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          SHOP_ADDRESS: ${{ vars.SHOP_ADDRESS }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Deploy — ${ENVIRONMENT}
+
+          | Field | Value |
+          |-------|-------|
+          | Image | \`${IMAGE}:${TAG:0:12}\` |
+          | Server | \`${IP}\` |
+          | Host | \`${SHOP_ADDRESS:-<unset>}\` |
+          | Path | \`${REMOTE_PATH}\` |
+          EOF

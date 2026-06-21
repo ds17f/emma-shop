@@ -65,11 +65,40 @@ ports), volumes `emma_db:/app/data` (SQLite) and `emma_uploads:/app/public/uploa
 Secrets via `.env` (`AUTH_SECRET`, `STRIPE_*`, `ADMIN_*`); `DATABASE_URL`,
 `AUTH_URL`, `AUTH_TRUST_HOST` set in `environment:`.
 
-### 5. Deploy mechanism (pick one — NOT yet built)
-- **CI (recommended, mirrors deadly):** GitHub Action builds + pushes
-  `ghcr.io/ds17f/emma-shop` on push to main; a deploy step SSHes to the box and
-  `docker compose pull && up -d` (the entrypoint runs migrations automatically).
-- **Manual:** SSH + `git pull` + `docker compose up -d --build`.
+### 5. Deploy mechanism — BUILT (two paths, same seam)
+
+Both resolve the box's IP **live from the Hetzner Cloud API** (`label_selector`,
+default `env=prod`) rather than hardcoding it or reading deadly's Terraform state.
+The only cross-project assumption is "that box exists and Caddy routes
+`shop.<domain>` here." A recreated box just works; deadly's repo is never touched.
+
+- **CI (recommended) — `.github/workflows/deploy.yml`:** on push to `main` (or
+  manual dispatch) it builds + pushes `ghcr.io/ds17f/emma-shop`, resolves the IP,
+  SSHes in, and `docker compose pull && up -d`. The entrypoint runs migrations.
+  Required **repo secrets:** `HCLOUD_TOKEN` (Hetzner API token), `SSH_PRIVATE_KEY`
+  (the `deploy` user's key). Optional **repo vars:** `HCLOUD_LABEL` (default
+  `env=prod`), `SHOP_URL` (enables a post-deploy health check). GHCR auth uses the
+  built-in `GITHUB_TOKEN`. Push the secrets with
+  [`scripts/setup-github-secrets.sh`](./scripts/setup-github-secrets.sh) (reads
+  the token + key from files — point it at the deadly-monorepo copies; re-run on
+  rotation).
+
+- **Manual — `make deploy`:** builds + pushes the image, resolves the IP from the
+  Hetzner API, then SSHes in to pull + restart. Needs `HCLOUD_TOKEN` exported
+  (same token), and an SSH key reachable via your ssh-agent / `~/.ssh/config`
+  (or `SSH_KEY=/path/to/key`). Override auto-resolution with `REMOTE_HOST=<alias>`.
+  `make server-ip` prints the resolved IP for sanity-checking.
+
+  ```bash
+  export HCLOUD_TOKEN=...           # Hetzner API token
+  make deploy                       # auto-resolves the box, builds, pushes, deploys
+  make deploy REMOTE_HOST=emma-box  # or target an explicit host/ssh-config alias
+  ```
+
+> The deploy SSH key is **never** vendored into this repo — keep it in your
+> ssh-agent / `~/.ssh/config` locally, or as the `SSH_PRIVATE_KEY` CI secret.
+> On the box, emma-shop's stack lives at `/opt/emma-shop` (compose + the prod
+> `.env` from Part C); deploy only injects `IMAGE_TAG`, never app secrets.
 
 ### Local test (how Part A was verified)
 ```bash
@@ -84,50 +113,82 @@ docker run -d --name emma-test -p 3002:3000 \
 
 ---
 
-## Part B — Changes in the deadly repo (minimal)
+## Part B — Built into deadly's deploy (additive, idempotent, beta + prod safe)
 
-### 1. One Caddy site block (in deadly's `Caddyfile`)
-```
-shop.<domain> {
-    reverse_proxy emma-shop:3000
-}
-```
-Commit → deadly CI (`build-images.yml` watches `Caddyfile`) rebuilds the caddy
-image → redeploy. Caddy auto-issues the Let's Encrypt cert on first hit.
+deadly's Caddy is the only thing on the box that binds `:80`/`:443` and terminates
+TLS, so the shop is published *through* it. This is **wired into deadly's normal
+`web-deploy`** — running a beta or prod deploy of deadly prepares everything on its
+side, idempotently, without affecting deadly's own sites. The full rationale lives
+in the deadly repo: **`docs/docs/developer/hosting-emma-shop.md`** (both repos stay
+aware). The changes there:
 
-### 2. Put Caddy on the shared network (deadly's `docker-compose.yml`)
-Add to the `caddy` service:
-```yaml
-    networks:
-      - default
-      - web
-```
-and at the bottom:
-```yaml
-networks:
-  web:
-    external: true
-```
+1. **`Caddyfile`** — one additive block, env-driven so one baked image serves both
+   environments:
+   ```caddyfile
+   {$SHOP_ADDRESS} {
+       reverse_proxy emma-shop:3000
+   }
+   ```
+2. **`docker-compose.yml`** — caddy joins the shared `web` network (keeping
+   `default`) and gets a **never-empty** shop host:
+   ```yaml
+   caddy:
+     environment:
+       - SHOP_ADDRESS=${SHOP_ADDRESS:-shop.localhost}  # real domain on prod; inert default elsewhere
+     networks: [default, web]
+   networks:
+     web: { external: true }
+   ```
+3. **`web-deploy.yml`** — `docker network create web 2>/dev/null || true` before
+   `compose up` (idempotent, every deploy), and writes `SHOP_ADDRESS` from the
+   per-env GitHub variable into the box `.env`.
+
+**Why it's safe on both envs:** the shop host is a per-environment variable
+(`SHOP_ADDRESS`), set only where the shop runs (**prod** = real domain). Where it's
+unset (**beta**), compose's `:-shop.localhost` default kicks in — `*.localhost` is
+an inert internal-cert host, so Caddy never requests a public cert and nothing
+routes to it. Because compose always passes a non-empty value, the `{$SHOP_ADDRESS}`
+block can never collapse to an empty (fatal) site address.
+
+### Guardrails (each is a way to hurt deadly — all already handled)
+1. **Network exists first** — the deploy's idempotent `docker network create web`
+   runs before `compose up`; without it, `external: web` makes `compose up` fail.
+2. **Never drop `default`** from the caddy service, or Caddy can't reach
+   `api`/`ui`/`ws` and **deadly 502s**.
+3. **Keep the shop host env-driven *with* the `:-shop.localhost` default** — a
+   hardcoded domain breaks the other env; removing the default lets an unset var
+   become a fatal empty site address.
+4. emma-shop binds **no host ports** (`expose: 3000`) and uses its **own**
+   volumes/db — if it's down, Caddy returns 502 only for `{$SHOP_ADDRESS}`.
+
+> A deadly deploy prepares the *hosting* side; it does **not** start the shop
+> container. emma-shop is deployed by its own pipeline (Part A / the GitHub Action)
+> and joins the same `web` network. Until then `{$SHOP_ADDRESS}` just 502s.
 
 ---
 
 ## Part C — One-time host + DNS setup
 
-1. **Shared network:** `docker network create web` on the box (idempotent).
-2. **DNS (GoDaddy):** add an `A` record `shop.<domain>` → Hetzner IP. (MX/email
+1. **Shared network:** auto-created by deadly's deploy
+   (`docker network create web || true`). Run it manually only if you deploy
+   emma-shop before deadly has redeployed once.
+2. **`SHOP_ADDRESS` (prod):** set the GitHub Actions **variable** `SHOP_ADDRESS`
+   = `shop.<domain>` on deadly's **prod** environment, so deadly's Caddy serves
+   that host. Leave it unset on beta (compose falls back to the inert default).
+3. **DNS (GoDaddy):** add an `A` record `shop.<domain>` → Hetzner IP. (MX/email
    unaffected.) Wait for propagation before the first Caddy hit so LE can validate.
-3. **Secrets on the box:** create emma-shop's `.env` (AUTH_SECRET via
+4. **Secrets on the box:** create emma-shop's `.env` (AUTH_SECRET via
    `openssl rand -base64 32`, Stripe live keys, admin creds). Never commit it.
-4. **Stripe:** in the dashboard add webhook endpoint
+5. **Stripe:** in the dashboard add webhook endpoint
    `https://shop.<domain>/api/webhooks/stripe` (event `checkout.session.completed`)
    and put its signing secret in `STRIPE_WEBHOOK_SECRET`.
 
 ## First-launch order
 
-1. DNS A record → Hetzner IP (propagate).
-2. `docker network create web` on the box.
-3. Deploy emma-shop stack; run `migrate deploy` + seed admin once.
-4. Add deadly Caddyfile block + network; redeploy deadly's caddy.
+1. DNS A record `shop.<domain>` → Hetzner IP (propagate).
+2. Set deadly's prod `SHOP_ADDRESS` variable = `shop.<domain>`.
+3. Deploy deadly (prod) — creates the `web` network + adds the shop Caddy route.
+4. Deploy emma-shop stack (joins `web`); it migrates + seeds admin on boot.
 5. Hit https://shop.<domain> → Caddy issues the cert → live.
 
 ## Backups

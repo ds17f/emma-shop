@@ -126,12 +126,20 @@ independent — they share only a Docker network and one Caddy route.
 4. In the **deadly** repo: add a Caddy block `shop.<domain> { reverse_proxy emma-shop:3000 }` and attach Caddy to the `web` network → its CI redeploys Caddy.
 5. Stripe Dashboard: add webhook `https://shop.<domain>/api/webhooks/stripe` (event `checkout.session.completed`).
 
-**Each deploy:**
+**Each deploy** (two ways, both resolve the box's IP live from the Hetzner API —
+nothing is hardcoded):
 ```bash
-make deploy REMOTE_HOST=<your-ssh-host>   # builds, pushes to GHCR, pulls + restarts on the box
+# CI (recommended): push to main → .github/workflows/deploy.yml builds→GHCR→deploys.
+#   Needs repo secrets HCLOUD_TOKEN + SSH_PRIVATE_KEY (see DEPLOY.md §5).
+
+# Manual:
+export HCLOUD_TOKEN=...                    # Hetzner API token
+make deploy                                # builds, pushes to GHCR, pulls + restarts on the box
+make deploy REMOTE_HOST=<ssh-alias>        # or target an explicit host instead of auto-resolving
 ```
-The container entrypoint applies migrations automatically. (Or wire a GitHub
-Action to build→GHCR→deploy; see DEPLOY.md.)
+The container entrypoint applies migrations automatically. The deploy SSH key is
+never stored in the repo — keep it in ssh-agent / `~/.ssh/config` (or the CI
+`SSH_PRIVATE_KEY` secret).
 
 ### Backups
 - **Database** = the single SQLite file on the `emma_db` volume. Cron a copy off-box.
