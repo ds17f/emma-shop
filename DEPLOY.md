@@ -72,16 +72,25 @@ default `env=prod`) rather than hardcoding it or reading deadly's Terraform stat
 The only cross-project assumption is "that box exists and Caddy routes
 `shop.<domain>` here." A recreated box just works; deadly's repo is never touched.
 
-- **CI (recommended) — `.github/workflows/deploy.yml`:** on push to `main` (or
-  manual dispatch) it builds + pushes `ghcr.io/ds17f/emma-shop`, resolves the IP,
-  SSHes in, and `docker compose pull && up -d`. The entrypoint runs migrations.
-  Required **repo secrets:** `HCLOUD_TOKEN` (Hetzner API token), `SSH_PRIVATE_KEY`
-  (the `deploy` user's key). Optional **repo vars:** `HCLOUD_LABEL` (default
-  `env=prod`), `SHOP_URL` (enables a post-deploy health check). GHCR auth uses the
-  built-in `GITHUB_TOKEN`. Push the secrets with
+- **CI (recommended) — two workflows, mirroring deadly:**
+  - **`build-images.yml`** builds + pushes `ghcr.io/ds17f/emma-shop:<sha>` (+ `latest`)
+    on push to `main` (when app/image files change) or manual dispatch. The GHCR
+    package must be **public** so the box can pull it (no registry auth, like deadly).
+  - **`deploy.yml`** (`workflow_dispatch`) promotes a pre-built SHA to an
+    **environment**: `environment` (beta|prod) → Hetzner label `env=<environment>`,
+    `ref` (the built SHA, default `main`), `update_dns`. It verifies the image
+    exists, resolves the IP, writes `/opt/emma-shop/.env` from the env's secrets,
+    `docker compose pull && up -d`, probes the container, optionally updates DNS.
+
+  Config via **GitHub Environments** (`beta`/`prod`):
+  - env **secrets:** `AUTH_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`,
+    `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` (optional — empty = checkout off)
+  - env **vars:** `SHOP_ADDRESS` (e.g. `beta.comettail.shop`), `AUTH_URL`
+
+  **Repo-level secrets** (shared): `HCLOUD_TOKEN`, `SSH_PRIVATE_KEY`, and
+  `GODADDY_KEY`/`GODADDY_SECRET` (for `update_dns`). Push them with
   [`scripts/setup-github-secrets.sh`](./scripts/setup-github-secrets.sh) (reads
-  the token + key from files — point it at the deadly-monorepo copies; re-run on
-  rotation).
+  from files — point it at the deadly-monorepo copies; re-run on rotation).
 
 - **Manual — `make deploy`:** builds + pushes the image, resolves the IP from the
   Hetzner API, then SSHes in to pull + restart. Needs `HCLOUD_TOKEN` exported
