@@ -1,6 +1,6 @@
-# Build → GHCR → deploy Comet Tail Crafts to a deadly Hetzner box (beta or prod),
-# fronted by deadly's Caddy. Mirrors deadly's web-deploy: per-environment via
-# GitHub Environments, writes the box .env from secrets, optional GoDaddy DNS.
+# Deploy a pre-built Comet Tail Crafts image to a deadly Hetzner box (beta or
+# prod), fronted by deadly's Caddy. Mirrors deadly's web-deploy: images are
+# built separately (build-images.yml); this promotes a SHA to an environment.
 #
 # Per-ENVIRONMENT (GitHub Environments `beta` / `prod`):
 #   secrets: AUTH_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD,
@@ -13,7 +13,7 @@
 # The box is selected by Hetzner label env=<environment>. The shared `web`
 # network + deadly's Caddy route for SHOP_ADDRESS must exist there (set deadly's
 # <env> SHOP_ADDRESS and deploy deadly). The GHCR package must be public so the
-# box (no registry auth, same as deadly) can pull it.
+# box (no registry auth, like deadly) can pull it.
 
 name: Deploy
 
@@ -25,6 +25,10 @@ on:
         type: choice
         options: [beta, prod]
         default: beta
+      ref:
+        description: "Git ref to deploy (resolves to an already-built image SHA)"
+        default: main
+        type: string
       update_dns:
         description: "Point the comettail.shop A record for SHOP_ADDRESS at this server"
         type: boolean
@@ -36,7 +40,7 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
+  packages: read
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
@@ -50,31 +54,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Resolve image tag
         id: image
         run: echo "tag=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GHCR
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build + push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ steps.image.outputs.tag }}
-            ${{ env.IMAGE }}:${{ inputs.environment }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Verify image exists
+        run: |
+          TAG="${{ steps.image.outputs.tag }}"
+          if docker manifest inspect "${IMAGE}:${TAG}" > /dev/null 2>&1; then
+            echo "Found ${IMAGE}:${TAG}"
+          else
+            echo "::error::${IMAGE}:${TAG} not found — run 'Build Images' for ref '${{ inputs.ref }}' first."
+            exit 1
+          fi
 
       - name: Resolve server IP from Hetzner
         id: server
