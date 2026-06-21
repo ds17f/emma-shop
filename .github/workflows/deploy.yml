@@ -10,7 +10,11 @@
 #            AUTH_URL      (e.g. https://beta.comettail.shop)
 #            EMAIL_FROM    (verified sender, e.g. "Comet Tail Crafts <orders@comettail.shop>")
 # Repo-level secrets (shared): HCLOUD_TOKEN, SSH_PRIVATE_KEY,
-#            GODADDY_KEY, GODADDY_SECRET   (GoDaddy only needed for update_dns)
+#            GODADDY_KEY, GODADDY_SECRET   (GoDaddy needed for update_dns + email DNS)
+# Repo-level vars (shared, email DNS — domain-global for comettail.shop):
+#            RESEND_DKIM_VALUE  (the resend._domainkey TXT value from Resend's
+#                                Add-Domain screen; empty = email DNS step skipped)
+#            RESEND_MX_HOST     (optional; default feedback-smtp.us-east-1.amazonses.com)
 #
 # The box is selected by Hetzner label env=<environment>. The shared `web`
 # network + deadly's Caddy route for SHOP_ADDRESS must exist there (set deadly's
@@ -207,6 +211,7 @@ jobs:
             echo "    OK"
           fi
 
+          # --- email DNS happens in its own step below (domain-global) ---
           echo "==> Polling 1.1.1.1 for $SHOP_ADDRESS -> $NEW_IP (up to ~5m)"
           DEADLINE=$(( $(date +%s) + 300 ))
           while [ "$(date +%s)" -lt "$DEADLINE" ]; do
@@ -214,6 +219,45 @@ jobs:
             [ "$RESOLVED" = "$NEW_IP" ] && { echo "    resolves to $NEW_IP"; break; }
             echo "    currently '${RESOLVED:-<empty>}', sleeping 15s..."; sleep 15
           done
+
+      # Resend email DNS for comettail.shop — domain-global (same records for beta
+      # and prod), so it's keyed off repo vars and self-applies on any deploy once
+      # set, independent of update_dns. The DKIM value is generated once in the
+      # Resend dashboard (Domains → Add Domain) and stored as repo var
+      # RESEND_DKIM_VALUE; SPF/MX are Resend's standard Amazon SES records.
+      - name: Update email DNS (Resend → GoDaddy)
+        if: ${{ vars.RESEND_DKIM_VALUE != '' }}
+        env:
+          GODADDY_KEY: ${{ secrets.GODADDY_KEY }}
+          GODADDY_SECRET: ${{ secrets.GODADDY_SECRET }}
+          DKIM_VALUE: ${{ vars.RESEND_DKIM_VALUE }}
+          MX_HOST: ${{ vars.RESEND_MX_HOST }}
+        run: |
+          set -euo pipefail
+          DOMAIN="comettail.shop"
+          MX_HOST="${MX_HOST:-feedback-smtp.us-east-1.amazonses.com}"
+          SPF="v=spf1 include:amazonses.com ~all"
+          AUTH="Authorization: sso-key $GODADDY_KEY:$GODADDY_SECRET"
+          BASE="https://api.godaddy.com/v1/domains/$DOMAIN/records"
+
+          # upsert <type> <name> <json-payload> <expected-data>
+          upsert() {
+            local type="$1" name="$2" payload="$3" want="$4" cur
+            cur=$(curl -fsS -H "$AUTH" "$BASE/$type/$name" | jq -r '.[0].data // empty')
+            if [ "$cur" = "$want" ]; then
+              echo "    $type $name — already current"
+            else
+              curl -fsS -X PUT -H "$AUTH" -H "Content-Type: application/json" \
+                -d "$payload" "$BASE/$type/$name" > /dev/null
+              echo "    $type $name — updated"
+            fi
+          }
+
+          echo "==> Resend email DNS on $DOMAIN"
+          upsert MX  send "[{\"data\":\"$MX_HOST\",\"priority\":10,\"ttl\":600}]" "$MX_HOST"
+          upsert TXT send "[{\"data\":\"$SPF\",\"ttl\":600}]" "$SPF"
+          upsert TXT resend._domainkey "[{\"data\":\"$DKIM_VALUE\",\"ttl\":600}]" "$DKIM_VALUE"
+          echo "    done — Resend verifies automatically once DNS propagates"
 
       # Public end-to-end check via deadly's Caddy. Warn-only: it only passes once
       # deadly's <env> Caddy has the SHOP_ADDRESS block + cert (separate step).
