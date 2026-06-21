@@ -6,9 +6,10 @@ const apiKey = process.env.RESEND_API_KEY;
 // Lazy: the app builds/runs without email configured (emails simply no-op).
 const resend = apiKey ? new Resend(apiKey) : null;
 
-// Verified sender. Until a domain is verified in Resend, only `onboarding@resend.dev`
-// works and it can only deliver to the Resend account owner's own address.
-const FROM = process.env.EMAIL_FROM || "Comet Tail Crafts <onboarding@resend.dev>";
+// Verified sender (no inbox — replies are redirected via replyTo below). Until a
+// domain is verified in Resend, only `onboarding@resend.dev` works and it can
+// only deliver to the Resend account owner's own address.
+const FROM = process.env.EMAIL_FROM || "Comet Tail Crafts <noreply@comettail.shop>";
 
 type OrderForEmail = {
   id: string;
@@ -72,13 +73,16 @@ export async function sendOrderEmails(
   const addr = renderAddress(order.shippingAddress);
   const items = itemsTable(order);
   const shortId = order.id.slice(-8).toUpperCase();
+  // noreply@ has no inbox; point replies at a real address the owner monitors.
+  const owner = settings.contactEmail || process.env.ADMIN_EMAIL || "";
 
-  // Customer confirmation
+  // Customer confirmation — replies go to the shop owner's inbox.
   if (order.email) {
     try {
       await resend.emails.send({
         from: FROM,
         to: order.email,
+        ...(owner ? { replyTo: owner } : {}),
         subject: `Your ${shop} order is confirmed 🎉`,
         html:
           `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#08172b">` +
@@ -95,13 +99,13 @@ export async function sendOrderEmails(
     }
   }
 
-  // Owner notification
-  const owner = settings.contactEmail || process.env.ADMIN_EMAIL || "";
+  // Owner notification — replies go straight to the customer.
   if (owner) {
     try {
       await resend.emails.send({
         from: FROM,
         to: owner,
+        ...(order.email ? { replyTo: order.email } : {}),
         subject: `New order #${shortId} — ${formatPrice(order.totalCents)}`,
         html:
           `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#08172b">` +
