@@ -83,7 +83,8 @@ export default async function AdminOrders({
           No orders found.
         </p>
       ) : (
-        <table className="w-full overflow-hidden rounded-2xl border-2 border-ink bg-white text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[36rem] overflow-hidden rounded-2xl border-2 border-ink bg-white text-sm">
           <thead className="bg-cream text-left text-ink/60">
             <tr>
               <th className="px-4 py-2 font-bold">Date</th>
@@ -113,6 +114,7 @@ export default async function AdminOrders({
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

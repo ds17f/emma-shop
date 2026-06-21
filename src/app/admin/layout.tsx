@@ -53,7 +53,7 @@ export default async function AdminLayout({
           View shop →
         </Link>
       </aside>
-      <div>{children}</div>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }
