@@ -118,7 +118,9 @@ jobs:
             echo "::error::AUTH_SECRET (env secret) or AUTH_URL (env var) missing for '${{ inputs.environment }}'."
             exit 1
           fi
-          ssh -i ~/.ssh/id_deploy "$SERVER" "mkdir -p $REMOTE_PATH"
+          # /opt is root-owned; create the dir once and hand it to the deploy
+          # user (passwordless sudo, like deadly). Idempotent.
+          ssh -i ~/.ssh/id_deploy "$SERVER" "sudo mkdir -p $REMOTE_PATH && sudo chown deploy: $REMOTE_PATH"
           # .env is read by compose for ${AUTH_URL} interpolation AND loaded into
           # the container via env_file. Stripe vars may be empty (checkout off).
           printf '%s\n' \
