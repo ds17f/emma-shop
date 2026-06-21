@@ -65,11 +65,22 @@ async function fulfillOrder(orderId: string, session: Stripe.Checkout.Session) {
   const customerName = session.customer_details?.name ?? "";
   const shippingAddress = JSON.stringify(shipping ?? {});
   const totalCents = session.amount_total ?? order.totalCents;
+  const paymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : (session.payment_intent?.id ?? null);
 
   await prisma.$transaction([
     prisma.order.update({
       where: { id: orderId },
-      data: { status: "PAID", email, customerName, shippingAddress, totalCents },
+      data: {
+        status: "PAID",
+        email,
+        customerName,
+        shippingAddress,
+        totalCents,
+        stripePaymentIntentId: paymentIntentId,
+      },
     }),
     // Decrement inventory for each purchased variant.
     ...order.items

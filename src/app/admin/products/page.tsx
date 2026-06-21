@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { formatPrice } from "@/lib/money";
 import { productSummary } from "@/lib/queries";
 import { deleteProduct } from "@/app/admin/actions";
+import { ConfirmButton } from "@/components/admin/ConfirmButton";
 
 export const dynamic = "force-dynamic";
 
@@ -66,12 +67,12 @@ export default async function AdminProducts() {
                     </Link>
                     <form action={deleteProduct} className="ml-3 inline">
                       <input type="hidden" name="id" value={p.id} />
-                      <button
-                        type="submit"
+                      <ConfirmButton
+                        message={`Delete product "${p.name}"? This can't be undone.`}
                         className="text-stone-400 hover:text-red-600"
                       >
                         Delete
-                      </button>
+                      </ConfirmButton>
                     </form>
                   </td>
                 </tr>

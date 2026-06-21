@@ -6,6 +6,7 @@ import {
   createAdminUser,
   deleteAdminUser,
 } from "@/app/admin/actions";
+import { ConfirmButton } from "@/components/admin/ConfirmButton";
 
 export const dynamic = "force-dynamic";
 
@@ -100,12 +101,12 @@ export default async function AdminUsers({
               {a.email !== myEmail && admins.length > 1 && (
                 <form action={deleteAdminUser}>
                   <input type="hidden" name="id" value={a.id} />
-                  <button
-                    type="submit"
+                  <ConfirmButton
+                    message={`Remove admin ${a.email}?`}
                     className="font-bold text-ink/40 hover:text-brand"
                   >
                     Remove
-                  </button>
+                  </ConfirmButton>
                 </form>
               )}
             </li>

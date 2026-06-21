@@ -70,7 +70,9 @@ model Order {
   customerName    String  @default("")
   shippingAddress String  @default("") // JSON string snapshot from Stripe
   totalCents      Int     @default(0)
+  refundedCents   Int     @default(0) // cumulative amount refunded via Stripe
   stripeSessionId String? @unique
+  stripePaymentIntentId String? // captured at fulfillment; used for refunds
 
   items OrderItem[]
 
