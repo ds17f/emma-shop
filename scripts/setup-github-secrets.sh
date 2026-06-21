@@ -86,5 +86,17 @@ if [ -n "${SHOP_URL:-}" ]; then
   echo "  ✓ SHOP_URL (var)        = ${SHOP_URL}"
 fi
 
+# --- Resend email DNS (repo vars, domain-global) — only when provided --------
+# RESEND_DKIM_VALUE is the resend._domainkey TXT value from Resend's Add-Domain
+# screen; setting it enables the "Update email DNS" step in deploy.yml.
+if [ -n "${RESEND_DKIM_VALUE:-}" ]; then
+  gh variable set RESEND_DKIM_VALUE --repo "$REPO" --body "$RESEND_DKIM_VALUE"
+  echo "  ✓ RESEND_DKIM_VALUE (var) set"
+fi
+if [ -n "${RESEND_MX_HOST:-}" ]; then
+  gh variable set RESEND_MX_HOST --repo "$REPO" --body "$RESEND_MX_HOST"
+  echo "  ✓ RESEND_MX_HOST (var)  = ${RESEND_MX_HOST}"
+fi
+
 echo
 echo "✅ Done. Verify: gh secret list --repo ${REPO}"
