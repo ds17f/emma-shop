@@ -6,6 +6,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
+import { requireStripe } from "@/lib/stripe";
 import { SETTINGS_ID } from "@/lib/settings";
 
 async function requireAdmin() {
@@ -182,7 +183,7 @@ export async function deleteProduct(formData: FormData) {
 
 // ---------- Orders ----------
 
-const ORDER_STATUSES = ["PENDING", "PAID", "SHIPPED", "FULFILLED", "CANCELLED"];
+const ORDER_STATUSES = ["PENDING", "PAID", "SHIPPED", "FULFILLED", "CANCELLED", "REFUNDED"];
 
 export async function updateOrderStatus(formData: FormData) {
   await requireAdmin();
@@ -192,6 +193,78 @@ export async function updateOrderStatus(formData: FormData) {
   await prisma.order.update({ where: { id }, data: { status } });
   revalidatePath("/admin/orders");
   revalidatePath(`/admin/orders/${id}`);
+}
+
+/**
+ * Refund (fully or partially) a paid order through Stripe, then update the order:
+ * track the cumulative refunded amount, flip to REFUNDED once fully refunded, and
+ * optionally return items to stock. Returns an {error} message on failure so the
+ * UI can surface it (redirects with ?error= otherwise lose the reason).
+ */
+export async function refundOrder(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id"));
+  const restock = formData.get("restock") === "on";
+
+  const order = await prisma.order.findUnique({ where: { id }, include: { items: true } });
+  if (!order) redirect("/admin/orders?error=notfound");
+
+  const remaining = order.totalCents - order.refundedCents;
+  if (remaining <= 0) redirect(`/admin/orders/${id}?error=refunded`);
+
+  // Default to a full refund of whatever is left; otherwise validate the amount.
+  const raw = String(formData.get("amount") ?? "").trim();
+  const amountCents = raw ? Math.round(parseFloat(raw) * 100) : remaining;
+  if (!Number.isFinite(amountCents) || amountCents <= 0 || amountCents > remaining) {
+    redirect(`/admin/orders/${id}?error=amount`);
+  }
+
+  // Resolve the PaymentIntent: stored at fulfillment, or derived from the session.
+  let paymentIntentId = order.stripePaymentIntentId;
+  const stripe = requireStripe();
+  if (!paymentIntentId && order.stripeSessionId) {
+    const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId);
+    paymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : (session.payment_intent?.id ?? null);
+  }
+  if (!paymentIntentId) redirect(`/admin/orders/${id}?error=nopayment`);
+
+  try {
+    await stripe.refunds.create({ payment_intent: paymentIntentId, amount: amountCents });
+  } catch (e) {
+    console.error("[refund] Stripe refund failed:", e);
+    redirect(`/admin/orders/${id}?error=stripe`);
+  }
+
+  const newRefunded = order.refundedCents + amountCents;
+  const fullyRefunded = newRefunded >= order.totalCents;
+
+  await prisma.$transaction([
+    prisma.order.update({
+      where: { id },
+      data: {
+        refundedCents: newRefunded,
+        ...(fullyRefunded ? { status: "REFUNDED" } : {}),
+      },
+    }),
+    // Optionally return items to stock (reverses the purchase-time decrement).
+    ...(restock
+      ? order.items
+          .filter((i) => i.variantId)
+          .map((i) =>
+            prisma.variant.update({
+              where: { id: i.variantId! },
+              data: { stock: { increment: i.quantity } },
+            }),
+          )
+      : []),
+  ]);
+
+  revalidatePath("/admin/orders");
+  revalidatePath(`/admin/orders/${id}`);
+  redirect(`/admin/orders/${id}?ok=refunded`);
 }
 
 // ---------- Store & shipping settings ----------

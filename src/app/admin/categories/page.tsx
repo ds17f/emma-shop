@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { createCategory, deleteCategory } from "@/app/admin/actions";
+import { ConfirmButton } from "@/components/admin/ConfirmButton";
 
 export const dynamic = "force-dynamic";
 
@@ -45,12 +46,12 @@ export default async function AdminCategories() {
               </span>
               <form action={deleteCategory}>
                 <input type="hidden" name="id" value={c.id} />
-                <button
-                  type="submit"
+                <ConfirmButton
+                  message={`Delete category "${c.name}"?`}
                   className="text-stone-400 hover:text-red-600"
                 >
                   Delete
-                </button>
+                </ConfirmButton>
               </form>
             </li>
           ))}
