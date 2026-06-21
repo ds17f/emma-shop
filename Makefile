@@ -5,9 +5,29 @@
 IMAGE        ?= ghcr.io/ds17f/emma-shop
 IMAGE_TAG    ?= latest
 LOCAL_IMAGE  ?= emma-shop:test
-# Set REMOTE_HOST to your SSH alias/host to enable `make deploy`.
+
+# Deploy target. emma-shop is a guest on the same Hetzner box deadly's prod runs
+# on, but it does NOT reach into deadly's repo. The server's IP is resolved live
+# from the Hetzner Cloud API (the source of truth), so a recreated box just works.
+#   HCLOUD_TOKEN  Hetzner API token (export it; same one deadly uses). Required
+#                 unless you set REMOTE_HOST yourself.
+#   REMOTE_HOST   Override auto-resolution with an explicit host/ssh-config alias.
+#   SSH_KEY       Optional path to the private key; omit to use ssh-agent/config.
+# If .secrets/ holds the token/key (e.g. symlinked from deadly-monorepo), use
+# them automatically; otherwise fall back to the env / ssh-agent. .secrets/ is
+# gitignored, so this never leaks into the repo.
+HCLOUD_TOKEN ?= $(shell tr -d '[:space:]' < .secrets/hetzner-key.txt 2>/dev/null)
+HCLOUD_LABEL ?= env=prod
+SSH_USER     ?= deploy
+SSH_KEY      ?= $(wildcard .secrets/ssh-key-2026-03-15.key)
 REMOTE_HOST  ?=
-REMOTE_PATH  ?= ~/emma-shop
+REMOTE_PATH  ?= /opt/emma-shop
+
+SSH_OPTS  = $(if $(SSH_KEY),-i $(SSH_KEY),)
+SERVER_IP = $(shell curl -sf -H "Authorization: Bearer $(HCLOUD_TOKEN)" \
+              "https://api.hetzner.cloud/v1/servers?label_selector=$(HCLOUD_LABEL)" \
+              | python3 -c "import sys,json;print(json.load(sys.stdin)['servers'][0]['public_net']['ipv4']['ip'])" 2>/dev/null)
+DEPLOY_TARGET = $(if $(REMOTE_HOST),$(REMOTE_HOST),$(SSH_USER)@$(SERVER_IP))
 
 .DEFAULT_GOAL := help
 
@@ -108,9 +128,21 @@ docker-push: ## Build + push the image to GHCR (IMAGE:IMAGE_TAG vars)
 	docker build -t $(IMAGE):$(IMAGE_TAG) .
 	docker push $(IMAGE):$(IMAGE_TAG)
 
+.PHONY: server-ip
+server-ip: ## Print the box's current public IP (resolved from the Hetzner API)
+	@test -n "$(HCLOUD_TOKEN)" || { echo "Set HCLOUD_TOKEN to resolve the server."; exit 1; }
+	@test -n "$(SERVER_IP)" || { echo "No server found for label '$(HCLOUD_LABEL)' (check HCLOUD_TOKEN)."; exit 1; }
+	@echo "$(SERVER_IP)"
+
 .PHONY: deploy
-deploy: ## Deploy to the server (needs REMOTE_HOST=...). Pulls image + restarts.
-	@test -n "$(REMOTE_HOST)" || { echo "Set REMOTE_HOST=your-ssh-host (see DEPLOY.md)"; exit 1; }
+deploy: ## Build+push image, resolve the box from Hetzner, then pull+restart there
+	@if [ -z "$(REMOTE_HOST)" ] && [ -z "$(HCLOUD_TOKEN)" ]; then \
+		echo "Set HCLOUD_TOKEN (Hetzner API token) to auto-resolve the server,"; \
+		echo "or REMOTE_HOST=<host|ssh-alias> to target it directly. See DEPLOY.md."; exit 1; fi
+	@test -n "$(REMOTE_HOST)$(SERVER_IP)" || { echo "Could not resolve server IP from Hetzner (check HCLOUD_TOKEN / label '$(HCLOUD_LABEL)')."; exit 1; }
 	$(MAKE) docker-push
-	ssh $(REMOTE_HOST) "cd $(REMOTE_PATH) && docker compose pull && docker compose up -d"
-	@echo ">> Deployed. Entrypoint runs migrations automatically."
+	@echo ">> Deploying $(IMAGE):$(IMAGE_TAG) to $(DEPLOY_TARGET):$(REMOTE_PATH)"
+	scp $(SSH_OPTS) docker-compose.yml $(DEPLOY_TARGET):$(REMOTE_PATH)/
+	ssh $(SSH_OPTS) $(DEPLOY_TARGET) \
+		"cd $(REMOTE_PATH) && IMAGE_TAG=$(IMAGE_TAG) docker compose pull && IMAGE_TAG=$(IMAGE_TAG) docker compose up -d && docker image prune -f"
+	@echo ">> Deployed. Entrypoint applies migrations + ensures the admin automatically."

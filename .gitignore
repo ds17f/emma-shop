@@ -33,6 +33,13 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# secrets — deploy keys, tokens, PEMs. Never commit. Deploy resolves the
+# server from the Hetzner API (HCLOUD_TOKEN) and SSHes with a key kept OUTSIDE
+# the repo (ssh-agent / ~/.ssh/config / CI secret). See DEPLOY.md.
+.secrets/
+*.key
+*.pem
+
 # vercel
 .vercel
 
