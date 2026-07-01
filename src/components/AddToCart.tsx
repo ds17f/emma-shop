@@ -53,7 +53,7 @@ export function AddToCart({ productName, productSlug, imageUrl, variants }: Prop
 
   return (
     <div className="space-y-4">
-      <p className="font-display text-3xl font-bold text-brand">
+      <p className="font-display text-3xl font-bold text-primary">
         {formatPrice(selected.priceCents)}
       </p>
 
@@ -74,7 +74,7 @@ export function AddToCart({ productName, productSlug, imageUrl, variants }: Prop
                   }}
                   className={`chip ${
                     v.id === selectedId
-                      ? "bg-grape text-white"
+                      ? "bg-accent1 text-white"
                       : "bg-white text-ink"
                   } ${out ? "cursor-not-allowed opacity-40 line-through" : ""}`}
                 >
@@ -119,7 +119,7 @@ export function AddToCart({ productName, productSlug, imageUrl, variants }: Prop
               Add to cart 🛒
             </button>
             {added && (
-              <Link href="/cart" className="font-bold text-teal underline">
+              <Link href="/cart" className="font-bold text-secondary underline">
                 Added! View cart →
               </Link>
             )}

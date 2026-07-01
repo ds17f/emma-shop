@@ -48,13 +48,13 @@ export default function CartPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">
-        Your <span className="text-brand">cart</span>
+        Your <span className="text-primary">cart</span>
       </h1>
 
       <div className="space-y-4">
         {items.map((item) => (
           <div key={item.variantId} className="card flex items-center gap-4 p-4">
-            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border-2 border-ink bg-cream">
+            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border-2 border-ink bg-page">
               {item.imageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -91,7 +91,7 @@ export default function CartPage() {
             <button
               type="button"
               onClick={() => removeItem(item.variantId)}
-              className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink bg-white font-bold hover:bg-brand hover:text-white"
+              className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink bg-white font-bold hover:bg-primary hover:text-white"
               aria-label="Remove item"
             >
               ✕
@@ -103,7 +103,7 @@ export default function CartPage() {
       <div className="card flex flex-col items-end gap-3 p-5">
         <p className="text-lg font-semibold">
           Subtotal:{" "}
-          <span className="font-display text-2xl font-bold text-brand">
+          <span className="font-display text-2xl font-bold text-primary">
             {formatPrice(subtotalCents)}
           </span>
         </p>
@@ -111,7 +111,7 @@ export default function CartPage() {
           Shipping &amp; tax calculated at checkout.
         </p>
         {error && (
-          <p className="rounded-xl border-2 border-ink bg-brand/10 px-3 py-2 text-sm font-bold text-brand-dark">
+          <p className="rounded-xl border-2 border-ink bg-primary/10 px-3 py-2 text-sm font-bold text-primary-hover">
             {error}
           </p>
         )}
@@ -119,7 +119,7 @@ export default function CartPage() {
           type="button"
           onClick={checkout}
           disabled={loading}
-          className="btn-teal text-base"
+          className="btn-secondary text-base"
         >
           {loading ? "Redirecting…" : "Checkout →"}
         </button>

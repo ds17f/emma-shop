@@ -28,7 +28,7 @@ export default async function AdminLoginPage({
       <h1 className="text-2xl font-bold">Admin sign in 🔑</h1>
       <form action={login} className="mt-6 space-y-4">
         {error && (
-          <p className="rounded-xl border-2 border-ink bg-brand/10 px-3 py-2 text-sm font-bold text-brand-dark">
+          <p className="rounded-xl border-2 border-ink bg-primary/10 px-3 py-2 text-sm font-bold text-primary-hover">
             Invalid email or password.
           </p>
         )}

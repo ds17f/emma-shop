@@ -50,7 +50,7 @@ export default async function AdminUsers({
       {banner && (
         <p
           className={`rounded-xl border-2 border-ink px-3 py-2 text-sm font-bold ${
-            banner.ok ? "bg-teal/15 text-teal-dark" : "bg-brand/10 text-brand-dark"
+            banner.ok ? "bg-secondary/15 text-secondary-hover" : "bg-primary/10 text-primary-hover"
           }`}
         >
           {banner.text}
@@ -93,7 +93,7 @@ export default async function AdminUsers({
               <span className="min-w-0 break-all font-semibold">
                 {a.email}
                 {a.email === myEmail && (
-                  <span className="ml-2 rounded-full border-2 border-ink bg-sun px-2 py-0.5 text-xs">
+                  <span className="ml-2 rounded-full border-2 border-ink bg-highlight px-2 py-0.5 text-xs">
                     you
                   </span>
                 )}
@@ -103,7 +103,7 @@ export default async function AdminUsers({
                   <input type="hidden" name="id" value={a.id} />
                   <ConfirmButton
                     message={`Remove admin ${a.email}?`}
-                    className="font-bold text-ink/40 hover:text-brand"
+                    className="font-bold text-ink/40 hover:text-primary"
                   >
                     Remove
                   </ConfirmButton>
@@ -126,7 +126,7 @@ export default async function AdminUsers({
             placeholder="Password (min 8 chars)"
             className="input"
           />
-          <button type="submit" className="btn-teal btn-sm">
+          <button type="submit" className="btn-secondary btn-sm">
             Add admin
           </button>
         </form>

@@ -16,7 +16,7 @@ export default function OrderSuccessPage() {
 
   return (
     <div className="card mx-auto max-w-md p-10 text-center">
-      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border-2 border-ink bg-teal text-4xl text-white">
+      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border-2 border-ink bg-secondary text-4xl text-white">
         ✓
       </div>
       <h1 className="mt-6 text-3xl font-bold">Thank you! 🎉</h1>
