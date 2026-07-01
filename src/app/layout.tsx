@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fredoka, Nunito } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart";
 import { Header } from "@/components/Header";
@@ -34,6 +35,9 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const settings = await getSettings();
+  // Runtime-gated (this layout is force-dynamic): only production sets
+  // GA_MEASUREMENT_ID, so beta/dev never report analytics.
+  const gaId = process.env.GA_MEASUREMENT_ID;
 
   return (
     <html
@@ -52,6 +56,7 @@ export default async function RootLayout({
           </footer>
         </CartProvider>
       </body>
+      {gaId ? <GoogleAnalytics gaId={gaId} /> : null}
     </html>
   );
 }

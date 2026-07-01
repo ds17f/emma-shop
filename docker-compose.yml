@@ -17,6 +17,9 @@ services:
       # Public URL of the shop — used by NextAuth. Override per deployment.
       - AUTH_URL=${AUTH_URL:-https://shop.example.com}
       - AUTH_TRUST_HOST=true
+      # Google Analytics 4 measurement ID. Set only in production so beta/dev
+      # don't report analytics; unset = GA disabled.
+      - GA_MEASUREMENT_ID=${GA_MEASUREMENT_ID:-}
     volumes:
       - emma_db:/app/data
       - emma_uploads:/app/public/uploads
