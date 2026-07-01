@@ -71,12 +71,8 @@ export function AppearanceEditor({
     () => PRESETS.find((p) => TOKEN_KEYS.every((k) => safe[k] === p.colors[k]))?.name ?? null,
     [safe],
   );
-  // The last-saved palette (initialColors) counts as "My look" when it isn't
-  // just one of the stock presets — that's her own custom she can return to.
-  const savedIsCustom = useMemo(
-    () => !PRESETS.some((p) => TOKEN_KEYS.every((k) => initialColors[k] === p.colors[k])),
-    [initialColors],
-  );
+  // "My look" always represents the last-saved palette (initialColors) — a
+  // consistent home base she can return to after trying stock presets.
   const onSaved = useMemo(
     () => TOKEN_KEYS.every((k) => safe[k] === initialColors[k]),
     [safe, initialColors],
@@ -166,16 +162,14 @@ export function AppearanceEditor({
           <p className="text-sm text-stone-500">
             {activePreset
               ? `Current look: ${activePreset}`
-              : savedIsCustom && onSaved
+              : onSaved
                 ? "Current look: My look (your saved custom)"
                 : "Custom look — pick a preset to start over, or Save to keep it."}
           </p>
           <div className="flex flex-wrap gap-2">
             {[
               ...PRESETS.map((p) => ({ name: p.name, colors: p.colors, selected: activePreset === p.name })),
-              ...(savedIsCustom
-                ? [{ name: "My look", colors: initialColors, selected: !activePreset && onSaved }]
-                : []),
+              { name: "My look", colors: initialColors, selected: !activePreset && onSaved },
             ].map((chip) => (
               <button
                 key={chip.name}
