@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useCart } from "@/lib/cart";
 
 export default function OrderSuccessPage() {
-  const { clear } = useCart();
+  const { clear, loaded } = useCart();
 
-  // Payment succeeded — empty the cart.
+  // Payment succeeded — empty the cart. Wait until the cart has hydrated from
+  // localStorage first; otherwise this effect runs before hydration and clears
+  // an already-empty cart, which hydration then repopulates.
   useEffect(() => {
-    clear();
-  }, [clear]);
+    if (loaded) clear();
+  }, [loaded, clear]);
 
   return (
     <div className="card mx-auto max-w-md p-10 text-center">
