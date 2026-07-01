@@ -68,7 +68,7 @@ jobs:
             [ -n "$db_vol" ] && [ -n "$up_vol" ] || { echo "emma volumes not found"; exit 1; }
             db_mp=$(docker volume inspect -f '{{.Mountpoint}}' "$db_vol")
             up_mp=$(docker volume inspect -f '{{.Mountpoint}}' "$up_vol")
-            [ -f "$db_mp/prod.db" ] || { echo "prod.db not found at $db_mp"; exit 1; }
+            sudo test -f "$db_mp/prod.db" || { echo "prod.db not found at $db_mp"; exit 1; }
             # SQLite's .backup is a consistent snapshot even while the app is live.
             sudo sqlite3 "$db_mp/prod.db" ".backup /tmp/emma-db-$TS.db"
             sudo tar czf "/tmp/emma-uploads-$TS.tgz" -C "$up_mp" .
