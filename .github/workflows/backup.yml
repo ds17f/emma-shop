@@ -1,0 +1,120 @@
+# Daily off-box backup of the prod emma-shop data to Backblaze B2.
+#
+# What it captures (the only stateful things — everything else is rebuilt from
+# the image): the SQLite DB (orders, refunds, products, settings, admin users)
+# and the uploaded images. Both live in Docker named volumes on the prod box.
+#
+# Flow: resolve the prod box (Hetzner label env=prod) → SQLite `.backup` +
+# tar the uploads volume on the box → pull to the runner → push to B2 (reusing
+# the deadly-backups bucket under an emma/ prefix) → keep the newest N.
+#
+# Restore: `aws s3 cp s3://deadly-backups/emma/db/<file> prod.db` and drop it
+# into the emma-shop_emma_db volume; untar the uploads archive into
+# emma-shop_emma_uploads. (See RESTORE steps in the job summary.)
+#
+# Repo secrets required: HCLOUD_TOKEN, SSH_PRIVATE_KEY, B2_BACKUPS_KEY_ID,
+# B2_BACKUPS_APP_KEY.
+
+name: Backup prod data
+
+on:
+  schedule:
+    - cron: "17 8 * * *" # daily 08:17 UTC
+  workflow_dispatch: {}
+
+concurrency:
+  group: backup-prod
+  cancel-in-progress: false
+
+env:
+  SSH_USER: deploy
+  B2_ENDPOINT: https://s3.us-west-004.backblazeb2.com
+  B2_BUCKET: deadly-backups
+  KEEP: "14"
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve prod server IP
+        id: server
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: |
+          IP=$(curl -sf -H "Authorization: Bearer $HCLOUD_TOKEN" \
+            "https://api.hetzner.cloud/v1/servers?label_selector=env=prod" \
+            | python3 -c 'import sys,json;s=json.load(sys.stdin)["servers"];print(s[0]["public_net"]["ipv4"]["ip"] if s else "")')
+          if [ -z "$IP" ]; then echo "::error::No prod server found for label env=prod"; exit 1; fi
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "${{ steps.server.outputs.ip }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Snapshot DB + uploads on the box
+        env:
+          SERVER: ${{ env.SSH_USER }}@${{ steps.server.outputs.ip }}
+        run: |
+          TS=$(date -u +%Y%m%d-%H%M%S)
+          echo "TS=$TS" >> "$GITHUB_ENV"
+          ssh -i ~/.ssh/id_deploy "$SERVER" "TS=$TS bash -euo pipefail -s" <<'REMOTE'
+            db_vol=$(docker volume ls -q | grep -E '_emma_db$' | head -1)
+            up_vol=$(docker volume ls -q | grep -E '_emma_uploads$' | head -1)
+            [ -n "$db_vol" ] && [ -n "$up_vol" ] || { echo "emma volumes not found"; exit 1; }
+            db_mp=$(docker volume inspect -f '{{.Mountpoint}}' "$db_vol")
+            up_mp=$(docker volume inspect -f '{{.Mountpoint}}' "$up_vol")
+            [ -f "$db_mp/prod.db" ] || { echo "prod.db not found at $db_mp"; exit 1; }
+            # SQLite's .backup is a consistent snapshot even while the app is live.
+            sudo sqlite3 "$db_mp/prod.db" ".backup /tmp/emma-db-$TS.db"
+            sudo tar czf "/tmp/emma-uploads-$TS.tgz" -C "$up_mp" .
+            sudo chown "$(id -u):$(id -g)" "/tmp/emma-db-$TS.db" "/tmp/emma-uploads-$TS.tgz"
+            ls -la "/tmp/emma-db-$TS.db" "/tmp/emma-uploads-$TS.tgz"
+          REMOTE
+
+      - name: Pull snapshots to the runner
+        env:
+          SERVER: ${{ env.SSH_USER }}@${{ steps.server.outputs.ip }}
+        run: |
+          scp -i ~/.ssh/id_deploy "$SERVER:/tmp/emma-db-$TS.db" .
+          scp -i ~/.ssh/id_deploy "$SERVER:/tmp/emma-uploads-$TS.tgz" .
+          ssh -i ~/.ssh/id_deploy "$SERVER" "rm -f /tmp/emma-db-$TS.db /tmp/emma-uploads-$TS.tgz"
+          # Sanity: the DB snapshot must be a valid SQLite file with tables.
+          python3 - "emma-db-$TS.db" <<'PY'
+          import sqlite3, sys
+          n = sqlite3.connect(sys.argv[1]).execute(
+              "SELECT count(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
+          print(f"DB snapshot OK: {n} tables")
+          assert n > 0, "no tables — snapshot looks empty"
+          PY
+
+      - name: Upload to B2 and prune
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_BACKUPS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_BACKUPS_APP_KEY }}
+          AWS_DEFAULT_REGION: us-west-004
+        run: |
+          aws s3 cp "emma-db-$TS.db" "s3://$B2_BUCKET/emma/db/emma-db-$TS.db" --endpoint-url "$B2_ENDPOINT"
+          aws s3 cp "emma-uploads-$TS.tgz" "s3://$B2_BUCKET/emma/uploads/emma-uploads-$TS.tgz" --endpoint-url "$B2_ENDPOINT"
+          for prefix in emma/db emma/uploads; do
+            mapfile -t keys < <(aws s3 ls "s3://$B2_BUCKET/$prefix/" --endpoint-url "$B2_ENDPOINT" | awk '{print $4}' | grep . | sort)
+            if [ "${#keys[@]}" -gt "$KEEP" ]; then
+              for k in "${keys[@]:0:${#keys[@]}-KEEP}"; do
+                echo "pruning $prefix/$k"
+                aws s3 rm "s3://$B2_BUCKET/$prefix/$k" --endpoint-url "$B2_ENDPOINT"
+              done
+            fi
+          done
+
+      - name: Summary
+        run: |
+          {
+            echo "### Backup complete 📦"
+            echo "- \`s3://$B2_BUCKET/emma/db/emma-db-$TS.db\`"
+            echo "- \`s3://$B2_BUCKET/emma/uploads/emma-uploads-$TS.tgz\`"
+            echo "- Retention: newest $KEEP kept per prefix"
+          } >> "$GITHUB_STEP_SUMMARY"
