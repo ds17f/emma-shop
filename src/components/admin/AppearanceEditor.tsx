@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   TOKENS,
   TOKEN_KEYS,
@@ -40,6 +40,40 @@ export function AppearanceEditor({
 
   const previewVars = useMemo(() => cssVarsFor(safe), [safe]);
   const logoSrc = logo || SHOP_LOGO;
+
+  // Which preset (if any) the current colors exactly match — drives the
+  // "selected" state and shows "Custom" once she tweaks a color.
+  const activePreset = useMemo(
+    () =>
+      PRESETS.find((p) => TOKEN_KEYS.every((k) => safe[k] === p.colors[k]))?.name ??
+      null,
+    [safe],
+  );
+
+  // Preview the draft palette across the WHOLE page (header, footer, buttons) by
+  // writing the CSS variables onto <html> live. On unmount (leaving without
+  // saving) restore whatever the server rendered, so nothing sticks.
+  useEffect(() => {
+    const root = document.documentElement;
+    const keys = [
+      ...TOKEN_KEYS.map((k) => `--color-${k}`),
+      "--color-brand-dark",
+      "--color-teal-dark",
+    ];
+    const original: Record<string, string> = {};
+    for (const k of keys) original[k] = root.style.getPropertyValue(k);
+    return () => {
+      for (const k of keys) {
+        if (original[k]) root.style.setProperty(k, original[k]);
+        else root.style.removeProperty(k);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    for (const [k, v] of Object.entries(previewVars)) root.style.setProperty(k, v);
+  }, [previewVars]);
 
   function setColor(key: TokenKey, value: string) {
     setColors((prev) => ({ ...prev, [key]: value }));
@@ -81,28 +115,39 @@ export function AppearanceEditor({
         <fieldset className="card space-y-3 p-5">
           <legend className="px-2 font-display text-lg font-bold">Presets</legend>
           <p className="text-sm text-stone-500">
-            A starting point — pick one, then fine-tune below.
+            {activePreset
+              ? `Current look: ${activePreset}`
+              : "Custom look — tweak the colors below, or pick a preset to start over."}
           </p>
           <div className="flex flex-wrap gap-2">
-            {PRESETS.map((p) => (
-              <button
-                key={p.name}
-                type="button"
-                onClick={() => applyPreset(p.colors)}
-                className="chip flex items-center gap-2 bg-white"
-              >
-                <span className="flex">
-                  {(["space", "brand", "teal", "sun"] as TokenKey[]).map((k) => (
-                    <span
-                      key={k}
-                      className="h-4 w-4 rounded-full border border-ink/30"
-                      style={{ backgroundColor: p.colors[k], marginLeft: k === "space" ? 0 : -6 }}
-                    />
-                  ))}
-                </span>
-                {p.name}
-              </button>
-            ))}
+            {PRESETS.map((p) => {
+              const selected = activePreset === p.name;
+              return (
+                <button
+                  key={p.name}
+                  type="button"
+                  onClick={() => applyPreset(p.colors)}
+                  aria-pressed={selected}
+                  className={`chip flex items-center gap-2 ${
+                    selected
+                      ? "bg-ink text-white ring-2 ring-ink ring-offset-2 ring-offset-cream"
+                      : "bg-white"
+                  }`}
+                >
+                  <span className="flex">
+                    {(["space", "brand", "teal", "sun"] as TokenKey[]).map((k) => (
+                      <span
+                        key={k}
+                        className="h-4 w-4 rounded-full border border-ink/30"
+                        style={{ backgroundColor: p.colors[k], marginLeft: k === "space" ? 0 : -6 }}
+                      />
+                    ))}
+                  </span>
+                  {p.name}
+                  {selected && <span aria-hidden>✓</span>}
+                </button>
+              );
+            })}
           </div>
         </fieldset>
 
