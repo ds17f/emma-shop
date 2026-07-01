@@ -71,6 +71,20 @@ export function AppearanceEditor({
     () => PRESETS.find((p) => TOKEN_KEYS.every((k) => safe[k] === p.colors[k]))?.name ?? null,
     [safe],
   );
+  // The last-saved palette (initialColors) counts as "My look" when it isn't
+  // just one of the stock presets — that's her own custom she can return to.
+  const savedIsCustom = useMemo(
+    () => !PRESETS.some((p) => TOKEN_KEYS.every((k) => initialColors[k] === p.colors[k])),
+    [initialColors],
+  );
+  const onSaved = useMemo(
+    () => TOKEN_KEYS.every((k) => safe[k] === initialColors[k]),
+    [safe, initialColors],
+  );
+  const dirty = useMemo(
+    () => logo !== initialLogo || TOKEN_KEYS.some((k) => safe[k] !== initialColors[k]),
+    [safe, logo, initialColors, initialLogo],
+  );
 
   // Preview the draft palette across the WHOLE page (header, footer, buttons) by
   // writing the CSS variables onto <html> live. On unmount (leaving without
@@ -152,37 +166,41 @@ export function AppearanceEditor({
           <p className="text-sm text-stone-500">
             {activePreset
               ? `Current look: ${activePreset}`
-              : "Custom look — tweak any color below, or pick a preset to start over."}
+              : savedIsCustom && onSaved
+                ? "Current look: My look (your saved custom)"
+                : "Custom look — pick a preset to start over, or Save to keep it."}
           </p>
           <div className="flex flex-wrap gap-2">
-            {PRESETS.map((p) => {
-              const selected = activePreset === p.name;
-              return (
-                <button
-                  key={p.name}
-                  type="button"
-                  onClick={() => applyPreset(p.colors)}
-                  aria-pressed={selected}
-                  className={`chip flex items-center gap-2 ${
-                    selected
-                      ? "bg-ink text-white ring-2 ring-ink ring-offset-2 ring-offset-page"
-                      : "bg-white"
-                  }`}
-                >
-                  <span className="flex">
-                    {(["header", "primary", "secondary", "highlight"] as TokenKey[]).map((k) => (
-                      <span
-                        key={k}
-                        className="h-4 w-4 rounded-full border border-ink/30"
-                        style={{ backgroundColor: p.colors[k], marginLeft: k === "header" ? 0 : -6 }}
-                      />
-                    ))}
-                  </span>
-                  {p.name}
-                  {selected && <span aria-hidden>✓</span>}
-                </button>
-              );
-            })}
+            {[
+              ...PRESETS.map((p) => ({ name: p.name, colors: p.colors, selected: activePreset === p.name })),
+              ...(savedIsCustom
+                ? [{ name: "My look", colors: initialColors, selected: !activePreset && onSaved }]
+                : []),
+            ].map((chip) => (
+              <button
+                key={chip.name}
+                type="button"
+                onClick={() => applyPreset(chip.colors)}
+                aria-pressed={chip.selected}
+                className={`chip flex items-center gap-2 ${
+                  chip.selected
+                    ? "bg-ink text-white ring-2 ring-ink ring-offset-2 ring-offset-page"
+                    : "bg-white"
+                }`}
+              >
+                <span className="flex">
+                  {(["header", "primary", "secondary", "highlight"] as TokenKey[]).map((k) => (
+                    <span
+                      key={k}
+                      className="h-4 w-4 rounded-full border border-ink/30"
+                      style={{ backgroundColor: chip.colors[k], marginLeft: k === "header" ? 0 : -6 }}
+                    />
+                  ))}
+                </span>
+                {chip.name}
+                {chip.selected && <span aria-hidden>✓</span>}
+              </button>
+            ))}
           </div>
         </fieldset>
 
@@ -293,7 +311,7 @@ export function AppearanceEditor({
           );
         })}
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button type="submit" className="btn-primary">
             Save appearance
           </button>
@@ -305,8 +323,11 @@ export function AppearanceEditor({
             }}
             className="btn-white"
           >
-            Reset all
+            Reset to default
           </button>
+          {dirty && (
+            <span className="text-sm font-bold text-ink/50">● Unsaved changes</span>
+          )}
         </div>
       </div>
 
