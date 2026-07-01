@@ -24,7 +24,7 @@ export default async function AdminAppearance({
         </p>
       </div>
       {ok && (
-        <p className="rounded-xl border-2 border-ink bg-teal/15 px-3 py-2 text-sm font-bold text-teal-dark">
+        <p className="rounded-xl border-2 border-ink bg-secondary/15 px-3 py-2 text-sm font-bold text-secondary-hover">
           Appearance saved!
         </p>
       )}

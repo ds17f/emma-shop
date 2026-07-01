@@ -22,7 +22,7 @@ export function Header({
   const leadWords = words.join(" ");
 
   return (
-    <header className="stars sticky top-0 z-20 border-b-2 border-ink bg-space">
+    <header className="stars sticky top-0 z-20 border-b-2 border-ink bg-header">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         <Link href="/" className="flex items-center gap-2.5">
           {logoOk && (
@@ -36,8 +36,8 @@ export function Header({
           )}
           <span className="font-display text-xl font-bold tracking-tight text-white sm:text-2xl">
             {leadWords}{" "}
-            {lastWord && <span className="text-brand">{lastWord}</span>}
-            <span className="text-teal"> ☄️</span>
+            {lastWord && <span className="text-primary">{lastWord}</span>}
+            <span className="text-secondary"> ☄️</span>
           </span>
         </Link>
         <nav className="flex items-center gap-3 text-sm font-bold">
@@ -50,7 +50,7 @@ export function Header({
           <Link href="/cart" className="btn-white btn-sm relative">
             Cart 🛒
             {count > 0 && (
-              <span className="absolute -right-2 -top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-ink bg-brand px-1 text-xs font-bold text-white">
+              <span className="absolute -right-2 -top-2 inline-flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-ink bg-primary px-1 text-xs font-bold text-white">
                 {count}
               </span>
             )}

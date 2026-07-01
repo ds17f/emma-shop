@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ category?: string; q?: string }>;
 
-const CHIP_COLORS = ["bg-brand", "bg-teal", "bg-grape", "bg-tangerine", "bg-sky"];
+const CHIP_COLORS = ["bg-primary", "bg-secondary", "bg-accent1", "bg-accent2", "bg-accent3"];
 
 export default async function ProductsPage({
   searchParams,
@@ -23,7 +23,7 @@ export default async function ProductsPage({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-3xl font-bold">
-          The <span className="text-brand">Shop</span> 🛸
+          The <span className="text-primary">Shop</span> 🛸
         </h1>
         <form className="flex gap-2" action="/products">
           {category && <input type="hidden" name="category" value={category} />}
@@ -34,7 +34,7 @@ export default async function ProductsPage({
             placeholder="Search products…"
             className="input w-48"
           />
-          <button type="submit" className="btn-teal btn-sm">
+          <button type="submit" className="btn-secondary btn-sm">
             Search
           </button>
         </form>

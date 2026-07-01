@@ -72,7 +72,7 @@ export default async function AdminOrders({
             placeholder="Search email…"
             className="input w-48"
           />
-          <button type="submit" className="btn-teal btn-sm">
+          <button type="submit" className="btn-secondary btn-sm">
             Search
           </button>
         </form>
@@ -85,7 +85,7 @@ export default async function AdminOrders({
       ) : (
         <div className="overflow-x-auto">
         <table className="w-full min-w-[36rem] overflow-hidden rounded-2xl border-2 border-ink bg-white text-sm">
-          <thead className="bg-cream text-left text-ink/60">
+          <thead className="bg-page text-left text-ink/60">
             <tr>
               <th className="px-4 py-2 font-bold">Date</th>
               <th className="px-4 py-2 font-bold">Customer</th>
@@ -96,7 +96,7 @@ export default async function AdminOrders({
           </thead>
           <tbody className="divide-y divide-ink/10">
             {orders.map((o) => (
-              <tr key={o.id} className="hover:bg-cream/60">
+              <tr key={o.id} className="hover:bg-page/60">
                 <td className="px-4 py-2">
                   <Link href={`/admin/orders/${o.id}`} className="block font-semibold">
                     {o.createdAt.toLocaleDateString()}
@@ -106,7 +106,7 @@ export default async function AdminOrders({
                 <td className="px-4 py-2">{o._count.items}</td>
                 <td className="px-4 py-2">{formatPrice(o.totalCents)}</td>
                 <td className="px-4 py-2">
-                  <span className="rounded-full border-2 border-ink bg-cream px-2 py-0.5 text-xs font-bold">
+                  <span className="rounded-full border-2 border-ink bg-page px-2 py-0.5 text-xs font-bold">
                     {o.status}
                   </span>
                 </td>

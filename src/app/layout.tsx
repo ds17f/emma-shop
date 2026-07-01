@@ -55,7 +55,7 @@ export default async function RootLayout({
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
             {children}
           </main>
-          <footer className="stars mt-8 border-t-2 border-ink bg-space py-6 text-center text-sm font-semibold text-white/80">
+          <footer className="stars mt-8 border-t-2 border-ink bg-header py-6 text-center text-sm font-semibold text-white/80">
             © {new Date().getFullYear()} {settings.shopName} · Handmade across the
             galaxy ☄️🐱
           </footer>

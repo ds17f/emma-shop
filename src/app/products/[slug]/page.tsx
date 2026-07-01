@@ -27,7 +27,7 @@ export default async function ProductPage({
 
       <div className="grid gap-8 md:grid-cols-2">
         <div className="space-y-3">
-          <div className="aspect-square overflow-hidden rounded-3xl border-2 border-ink bg-cream shadow-[5px_5px_0_0_var(--color-ink)]">
+          <div className="aspect-square overflow-hidden rounded-3xl border-2 border-ink bg-page shadow-[5px_5px_0_0_var(--color-ink)]">
             {mainImage ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -60,7 +60,7 @@ export default async function ProductPage({
           {product.category && (
             <Link
               href={`/products?category=${product.category.slug}`}
-              className="inline-block rounded-full border-2 border-ink bg-sun px-3 py-1 text-sm font-bold"
+              className="inline-block rounded-full border-2 border-ink bg-highlight px-3 py-1 text-sm font-bold"
             >
               {product.category.name}
             </Link>

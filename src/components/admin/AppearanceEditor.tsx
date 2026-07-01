@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { HexColorPicker } from "react-colorful";
 import {
   TOKENS,
   TOKEN_KEYS,
@@ -8,13 +9,19 @@ import {
   PRESETS,
   cssVarsFor,
   normalizeHex,
+  contrastWarnings,
   type TokenKey,
 } from "@/lib/theme";
 import { SHOP_LOGO } from "@/lib/brand";
 
-type Colors = Record<TokenKey, string>;
+declare global {
+  interface Window {
+    EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> };
+  }
+}
 
-const GROUPS = ["Backgrounds", "Text", "Accents", "Decorative"] as const;
+type Colors = Record<TokenKey, string>;
+const GROUPS = ["Backgrounds", "Text", "Buttons", "Decorative"] as const;
 
 export function AppearanceEditor({
   initialColors,
@@ -25,12 +32,21 @@ export function AppearanceEditor({
   initialLogo: string;
   action: (formData: FormData) => void | Promise<void>;
 }) {
-  // `colors` holds raw text so the hex field can be typed freely; everything
-  // that consumes a color reads the validated `safe` version.
+  // `colors` holds raw text so the hex field can be typed freely; anything that
+  // consumes a color reads the validated `safe` version.
   const [colors, setColors] = useState<Colors>(initialColors);
   const [logo, setLogo] = useState(initialLogo);
+  const [openKey, setOpenKey] = useState<TokenKey | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasEyeDropper, setHasEyeDropper] = useState(false);
+
+  useEffect(() => {
+    // Detect after mount so SSR and first client render agree (no window on the
+    // server); intentional setState in effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHasEyeDropper(typeof window !== "undefined" && "EyeDropper" in window);
+  }, []);
 
   const safe = useMemo<Colors>(() => {
     const out = {} as Colors;
@@ -39,14 +55,11 @@ export function AppearanceEditor({
   }, [colors]);
 
   const previewVars = useMemo(() => cssVarsFor(safe), [safe]);
+  const warnings = useMemo(() => contrastWarnings(safe), [safe]);
   const logoSrc = logo || SHOP_LOGO;
 
-  // Which preset (if any) the current colors exactly match — drives the
-  // "selected" state and shows "Custom" once she tweaks a color.
   const activePreset = useMemo(
-    () =>
-      PRESETS.find((p) => TOKEN_KEYS.every((k) => safe[k] === p.colors[k]))?.name ??
-      null,
+    () => PRESETS.find((p) => TOKEN_KEYS.every((k) => safe[k] === p.colors[k]))?.name ?? null,
     [safe],
   );
 
@@ -57,8 +70,11 @@ export function AppearanceEditor({
     const root = document.documentElement;
     const keys = [
       ...TOKEN_KEYS.map((k) => `--color-${k}`),
-      "--color-brand-dark",
-      "--color-teal-dark",
+      "--color-primary-hover",
+      "--color-secondary-hover",
+      "--on-primary",
+      "--on-secondary",
+      "--on-highlight",
     ];
     const original: Record<string, string> = {};
     for (const k of keys) original[k] = root.style.getPropertyValue(k);
@@ -80,6 +96,17 @@ export function AppearanceEditor({
   }
   function applyPreset(preset: Colors) {
     setColors({ ...preset });
+    setOpenKey(null);
+  }
+
+  async function pickWithEyeDropper(key: TokenKey) {
+    if (!window.EyeDropper) return;
+    try {
+      const res = await new window.EyeDropper().open();
+      setColor(key, res.sRGBHex);
+    } catch {
+      /* user cancelled */
+    }
   }
 
   async function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
@@ -104,7 +131,6 @@ export function AppearanceEditor({
 
   return (
     <form action={action} className="grid gap-6 lg:grid-cols-[1fr_minmax(300px,340px)]">
-      {/* Controls carry state into the server action via hidden inputs. */}
       {TOKEN_KEYS.map((key) => (
         <input key={key} type="hidden" name={`color_${key}`} value={safe[key]} />
       ))}
@@ -117,7 +143,7 @@ export function AppearanceEditor({
           <p className="text-sm text-stone-500">
             {activePreset
               ? `Current look: ${activePreset}`
-              : "Custom look — tweak the colors below, or pick a preset to start over."}
+              : "Custom look — tweak any color below, or pick a preset to start over."}
           </p>
           <div className="flex flex-wrap gap-2">
             {PRESETS.map((p) => {
@@ -130,16 +156,16 @@ export function AppearanceEditor({
                   aria-pressed={selected}
                   className={`chip flex items-center gap-2 ${
                     selected
-                      ? "bg-ink text-white ring-2 ring-ink ring-offset-2 ring-offset-cream"
+                      ? "bg-ink text-white ring-2 ring-ink ring-offset-2 ring-offset-page"
                       : "bg-white"
                   }`}
                 >
                   <span className="flex">
-                    {(["space", "brand", "teal", "sun"] as TokenKey[]).map((k) => (
+                    {(["header", "primary", "secondary", "highlight"] as TokenKey[]).map((k) => (
                       <span
                         key={k}
                         className="h-4 w-4 rounded-full border border-ink/30"
-                        style={{ backgroundColor: p.colors[k], marginLeft: k === "space" ? 0 : -6 }}
+                        style={{ backgroundColor: p.colors[k], marginLeft: k === "header" ? 0 : -6 }}
                       />
                     ))}
                   </span>
@@ -164,57 +190,96 @@ export function AppearanceEditor({
             <div className="flex flex-wrap items-center gap-2">
               <label className="btn-white btn-sm cursor-pointer">
                 {uploading ? "Uploading…" : "Upload logo"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleLogo}
-                  className="hidden"
-                  disabled={uploading}
-                />
+                <input type="file" accept="image/*" onChange={handleLogo} className="hidden" disabled={uploading} />
               </label>
               {logo && (
-                <button
-                  type="button"
-                  onClick={() => setLogo("")}
-                  className="btn-white btn-sm"
-                >
+                <button type="button" onClick={() => setLogo("")} className="btn-white btn-sm">
                   Reset to default
                 </button>
               )}
             </div>
           </div>
-          {error && <p className="text-sm font-bold text-brand">{error}</p>}
+          {error && <p className="text-sm font-bold text-primary">{error}</p>}
         </fieldset>
 
-        {/* Colors, grouped */}
+        {/* Readability warnings */}
+        {warnings.length > 0 && (
+          <div className="rounded-2xl border-2 border-ink bg-highlight/20 p-4 text-sm">
+            <p className="font-bold">⚠️ Hard to read</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5">
+              {warnings.map((w) => (
+                <li key={w.label}>
+                  {w.label} — contrast {w.ratio.toFixed(1)}:1 (aim for 4.5:1+)
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Colors, grouped, each with a rich picker */}
         {GROUPS.map((group) => {
           const tokens = TOKENS.filter((t) => t.group === group);
           return (
-            <fieldset key={group} className="card space-y-3 p-5">
+            <fieldset key={group} className="card space-y-2 p-5">
               <legend className="px-2 font-display text-lg font-bold">{group}</legend>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {tokens.map((t) => (
-                  <label key={t.key} className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={safe[t.key]}
-                      onChange={(e) => setColor(t.key, e.target.value)}
-                      className="h-9 w-12 shrink-0 cursor-pointer rounded-lg border-2 border-ink bg-white"
-                      aria-label={t.label}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold text-ink/70">{t.label}</span>
+              {tokens.map((t) => {
+                const open = openKey === t.key;
+                return (
+                  <div key={t.key} className="rounded-xl px-1 py-1.5">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setOpenKey(open ? null : t.key)}
+                        aria-label={`Edit ${t.label}`}
+                        aria-expanded={open}
+                        className="h-9 w-9 shrink-0 rounded-lg border-2 border-ink"
+                        style={{ backgroundColor: safe[t.key] }}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold text-ink/80">{t.label}</span>
+                        <span className="block text-xs text-stone-400">{t.hint}</span>
+                      </span>
                       <input
                         type="text"
                         value={colors[t.key]}
                         onChange={(e) => setColor(t.key, e.target.value)}
+                        onFocus={() => setOpenKey(t.key)}
                         spellCheck={false}
-                        className="mt-0.5 w-28 rounded-lg border-2 border-ink/20 bg-white px-2 py-1 font-mono text-xs focus:border-ink focus:outline-none"
+                        className="w-24 rounded-lg border-2 border-ink/20 bg-white px-2 py-1 font-mono text-xs focus:border-ink focus:outline-none"
                       />
-                    </span>
-                  </label>
-                ))}
-              </div>
+                    </div>
+                    {open && (
+                      <div className="mt-3 flex flex-col items-start gap-3 pl-12 sm:flex-row sm:items-center">
+                        <HexColorPicker
+                          color={safe[t.key]}
+                          onChange={(hex) => setColor(t.key, hex)}
+                        />
+                        <div className="flex gap-2">
+                          {hasEyeDropper && (
+                            <button
+                              type="button"
+                              onClick={() => pickWithEyeDropper(t.key)}
+                              className="btn-white btn-sm"
+                            >
+                              💧 Pick
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setColor(t.key, DEFAULT_COLORS[t.key])}
+                            className="btn-white btn-sm"
+                          >
+                            Reset
+                          </button>
+                          <button type="button" onClick={() => setOpenKey(null)} className="btn-white btn-sm">
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </fieldset>
           );
         })}
@@ -236,8 +301,7 @@ export function AppearanceEditor({
         </div>
       </div>
 
-      {/* Live preview — CSS vars are scoped to this panel so it re-themes as you
-          edit without touching the admin chrome. */}
+      {/* Live storefront sample (the whole page also previews live). */}
       <div className="lg:sticky lg:top-4 lg:self-start">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-400">
           Live preview
@@ -246,7 +310,7 @@ export function AppearanceEditor({
           style={previewVars}
           className="overflow-hidden rounded-3xl border-2 border-ink shadow-[4px_4px_0_0_var(--color-ink)]"
         >
-          <div className="stars flex items-center gap-2 border-b-2 border-ink bg-space px-4 py-3">
+          <div className="stars flex items-center gap-2 border-b-2 border-ink bg-header px-4 py-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={logoSrc}
@@ -254,18 +318,18 @@ export function AppearanceEditor({
               className="h-8 w-8 rounded-full border-2 border-ink bg-white object-cover"
             />
             <span className="font-display text-lg font-bold text-white">
-              Comet <span className="text-brand">Tail</span>
-              <span className="text-teal"> ☄️</span>
+              Comet <span className="text-primary">Tail</span>
+              <span className="text-secondary"> ☄️</span>
             </span>
           </div>
-          <div className="space-y-3 bg-cream p-4">
+          <div className="space-y-3 bg-page p-4">
             <div className="card space-y-2 p-3">
               <p className="font-display font-bold text-ink">Handmade Blanket</p>
               <p className="text-sm text-ink/70">Cozy, cosmic, one-of-a-kind.</p>
               <div className="flex flex-wrap gap-2 pt-1">
                 <span className="btn-primary btn-sm">Add to cart</span>
-                <span className="btn-teal btn-sm">Details</span>
-                <span className="btn-sun btn-sm">Sale</span>
+                <span className="btn-secondary btn-sm">Details</span>
+                <span className="btn-highlight btn-sm">Sale</span>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">

@@ -13,7 +13,7 @@ type Props = {
 };
 
 // Rotating playful accent colors for the price tag.
-const ACCENTS = ["bg-brand", "bg-teal", "bg-grape", "bg-tangerine", "bg-sky"];
+const ACCENTS = ["bg-primary", "bg-secondary", "bg-accent1", "bg-accent2", "bg-accent3"];
 
 export function ProductCard({ product, accent = 0 }: Props) {
   const { minPrice, inStock } = productSummary(product);
@@ -25,7 +25,7 @@ export function ProductCard({ product, accent = 0 }: Props) {
       href={`/products/${product.slug}`}
       className="card group block overflow-hidden transition-transform duration-100 hover:-translate-y-1 hover:rotate-[-1deg]"
     >
-      <div className="relative aspect-square overflow-hidden border-b-2 border-ink bg-cream">
+      <div className="relative aspect-square overflow-hidden border-b-2 border-ink bg-page">
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
