@@ -200,9 +200,71 @@ block can never collapse to an empty (fatal) site address.
 4. Deploy emma-shop stack (joins `web`); it migrates + seeds admin on boot.
 5. Hit https://shop.<domain> → Caddy issues the cert → live.
 
-## Backups
-- Database = the single file on `emma_db`. Cron a copy off-box.
-- Product images = `emma_uploads` volume. Back these up too.
+## Backups & restore
+
+Prod data lives in two Docker volumes on the box — `emma-shop_emma_db` (the
+SQLite `prod.db`: orders, refunds, products, settings, admin users) and
+`emma-shop_emma_uploads` (uploaded images). Everything else is rebuilt from the
+image, so these two are all that need backing up.
+
+### Automated backups
+
+`.github/workflows/backup.yml` runs **daily at 08:17 UTC** (and on demand via
+`gh workflow run backup.yml`). Each run:
+
+1. Resolves the prod box (Hetzner label `env=prod`) and SSHes in as `deploy`.
+2. Takes a consistent snapshot — `sqlite3 .backup` of the DB volume (via `sudo`;
+   the deploy user can't traverse `/var/lib/docker`) plus a `tar` of the uploads
+   volume — into `/tmp` on the box.
+3. Pulls both to the runner, checks the DB snapshot has tables, then uploads to
+   Backblaze B2 and keeps the **newest 14** per prefix:
+   - `s3://deadly-backups/emma/db/emma-db-<UTC-timestamp>.db`
+   - `s3://deadly-backups/emma/uploads/emma-uploads-<UTC-timestamp>.tgz`
+
+Endpoint `https://s3.us-west-004.backblazeb2.com`; creds are the repo secrets
+`B2_BACKUPS_KEY_ID` / `B2_BACKUPS_APP_KEY` (shared with deadly's backups key).
+
+### List / download a backup
+
+With the B2 backups key exported as AWS creds:
+
+```bash
+export AWS_ACCESS_KEY_ID=<B2_BACKUPS_KEY_ID>
+export AWS_SECRET_ACCESS_KEY=<B2_BACKUPS_APP_KEY>
+EP=https://s3.us-west-004.backblazeb2.com
+
+aws s3 ls s3://deadly-backups/emma/db/ --endpoint-url $EP          # pick a timestamp
+aws s3 cp s3://deadly-backups/emma/db/emma-db-<ts>.db . --endpoint-url $EP
+aws s3 cp s3://deadly-backups/emma/uploads/emma-uploads-<ts>.tgz . --endpoint-url $EP
+```
+
+### Restore to the box
+
+Copy the chosen backups to the box, then write them into the volumes with a
+throwaway container (no host paths or sudo needed, correct ownership):
+
+```bash
+IP=<prod box IP>          # Hetzner label env=prod (e.g. 178.156.208.143)
+KEY=.secrets/ssh-key-2026-03-15.key
+scp -i $KEY emma-db-<ts>.db emma-uploads-<ts>.tgz deploy@$IP:/tmp/
+
+ssh -i $KEY deploy@$IP bash -s <<'SH'
+set -e
+cd /opt/emma-shop
+docker compose stop emma-shop                     # quiesce writers first
+# Database: replace prod.db, drop any stale WAL/SHM sidecars
+docker run --rm -v emma-shop_emma_db:/data -v /tmp:/b alpine sh -c '
+  cp /b/emma-db-*.db /data/prod.db && rm -f /data/prod.db-wal /data/prod.db-shm'
+# Uploaded images
+docker run --rm -v emma-shop_emma_uploads:/data -v /tmp:/b alpine sh -c '
+  cd /data && tar xzf /b/emma-uploads-*.tgz'
+docker compose up -d
+rm -f /tmp/emma-db-*.db /tmp/emma-uploads-*.tgz
+SH
+```
+
+Then load https://comettail.shop and check the admin orders list to confirm the
+data is back.
 
 ## Why not GoDaddy cPanel
 Shared cPanel runs PHP/Apache/MySQL, not a long-running Next.js Node server
