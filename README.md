@@ -142,8 +142,10 @@ never stored in the repo — keep it in ssh-agent / `~/.ssh/config` (or the CI
 `SSH_PRIVATE_KEY` secret).
 
 ### Backups
-- **Database** = the single SQLite file on the `emma_db` volume. Cron a copy off-box.
-- **Uploaded images** = the `emma_uploads` volume (`/app/public/uploads`). Back these up too.
+Automated. [`.github/workflows/backup.yml`](./.github/workflows/backup.yml) backs
+up the prod SQLite DB and the `emma_uploads` volume to Backblaze B2 **daily**
+(newest 14 kept); run one on demand with `gh workflow run backup.yml`. Full
+list / download / **restore** steps are in [`DEPLOY.md`](./DEPLOY.md#backups--restore).
 
 ---
 
