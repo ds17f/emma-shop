@@ -2,8 +2,10 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -20,6 +22,7 @@ export type CartItem = {
 
 type CartContextValue = {
   items: CartItem[];
+  loaded: boolean;
   count: number;
   subtotalCents: number;
   addItem: (item: Omit<CartItem, "quantity">, quantity?: number) => void;
@@ -30,6 +33,10 @@ type CartContextValue = {
 
 const CartContext = createContext<CartContextValue | null>(null);
 const STORAGE_KEY = "emma-shop-cart";
+
+function clampQty(qty: number, max: number) {
+  return Math.max(1, Math.min(qty, Math.max(1, max)));
+}
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
@@ -55,15 +62,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items, loaded]);
 
-  function clampQty(qty: number, max: number) {
-    return Math.max(1, Math.min(qty, Math.max(1, max)));
-  }
-
-  const value: CartContextValue = {
-    items,
-    count: items.reduce((n, i) => n + i.quantity, 0),
-    subtotalCents: items.reduce((n, i) => n + i.priceCents * i.quantity, 0),
-    addItem: (item, quantity = 1) =>
+  const addItem = useCallback<CartContextValue["addItem"]>(
+    (item, quantity = 1) =>
       setItems((prev) => {
         const existing = prev.find((i) => i.variantId === item.variantId);
         if (existing) {
@@ -75,7 +75,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
         return [...prev, { ...item, quantity: clampQty(quantity, item.maxStock) }];
       }),
-    setQuantity: (variantId, quantity) =>
+    [],
+  );
+
+  const setQuantity = useCallback<CartContextValue["setQuantity"]>(
+    (variantId, quantity) =>
       setItems((prev) =>
         prev.map((i) =>
           i.variantId === variantId
@@ -83,10 +87,35 @@ export function CartProvider({ children }: { children: ReactNode }) {
             : i,
         ),
       ),
-    removeItem: (variantId) =>
+    [],
+  );
+
+  const removeItem = useCallback<CartContextValue["removeItem"]>(
+    (variantId) =>
       setItems((prev) => prev.filter((i) => i.variantId !== variantId)),
-    clear: () => setItems([]),
-  };
+    [],
+  );
+
+  // Stable identity + bail out when already empty, so consumers can safely
+  // clear() from an effect without triggering a re-render loop.
+  const clear = useCallback<CartContextValue["clear"]>(
+    () => setItems((prev) => (prev.length === 0 ? prev : [])),
+    [],
+  );
+
+  const value = useMemo<CartContextValue>(
+    () => ({
+      items,
+      loaded,
+      count: items.reduce((n, i) => n + i.quantity, 0),
+      subtotalCents: items.reduce((n, i) => n + i.priceCents * i.quantity, 0),
+      addItem,
+      setQuantity,
+      removeItem,
+      clear,
+    }),
+    [items, loaded, addItem, setQuantity, removeItem, clear],
+  );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
