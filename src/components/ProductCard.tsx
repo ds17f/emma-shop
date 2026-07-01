@@ -44,12 +44,12 @@ export function ProductCard({ product, accent = 0 }: Props) {
           </span>
         )}
       </div>
-      <div className="flex items-center justify-between gap-2 p-3">
-        <h3 className="font-display font-semibold leading-tight text-ink">
+      <div className="flex flex-col gap-2 p-3">
+        <h3 className="line-clamp-2 font-display font-semibold leading-tight text-ink">
           {product.name}
         </h3>
         <span
-          className={`shrink-0 rounded-full border-2 border-ink ${tag} px-2.5 py-1 text-xs font-bold text-white`}
+          className={`self-start rounded-full border-2 border-ink ${tag} px-2.5 py-1 text-xs font-bold text-white`}
         >
           {formatPrice(minPrice)}
         </span>

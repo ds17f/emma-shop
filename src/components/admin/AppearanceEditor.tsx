@@ -55,8 +55,17 @@ export function AppearanceEditor({
   }, [colors]);
 
   const previewVars = useMemo(() => cssVarsFor(safe), [safe]);
-  const warnings = useMemo(() => contrastWarnings(safe), [safe]);
   const logoSrc = logo || SHOP_LOGO;
+
+  // Debounce the readability check: recompute only after dragging pauses, so the
+  // warning card doesn't flicker on/off (and reflow the page) while a color is
+  // being dragged across the contrast threshold. The color preview stays live.
+  const [warnColors, setWarnColors] = useState(safe);
+  useEffect(() => {
+    const t = setTimeout(() => setWarnColors(safe), 200);
+    return () => clearTimeout(t);
+  }, [safe]);
+  const warnings = useMemo(() => contrastWarnings(warnColors), [warnColors]);
 
   const activePreset = useMemo(
     () => PRESETS.find((p) => TOKEN_KEYS.every((k) => safe[k] === p.colors[k]))?.name ?? null,
