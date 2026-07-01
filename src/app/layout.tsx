@@ -5,6 +5,7 @@ import "./globals.css";
 import { CartProvider } from "@/lib/cart";
 import { Header } from "@/components/Header";
 import { getSettings } from "@/lib/settings";
+import { cssVarsFor, parseTheme } from "@/lib/theme";
 
 const fredoka = Fredoka({
   subsets: ["latin"],
@@ -38,15 +39,19 @@ export default async function RootLayout({
   // Runtime-gated (this layout is force-dynamic): only production sets
   // GA_MEASUREMENT_ID, so beta/dev never report analytics.
   const gaId = process.env.GA_MEASUREMENT_ID;
+  // Owner-chosen palette (admin → Appearance) as CSS-variable overrides on
+  // <html>; empty when unset, so the globals.css defaults apply.
+  const themeVars = cssVarsFor(parseTheme(settings.themeJson));
 
   return (
     <html
       lang="en"
+      style={themeVars}
       className={`${fredoka.variable} ${nunito.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
         <CartProvider>
-          <Header shopName={settings.shopName} />
+          <Header shopName={settings.shopName} logoUrl={settings.logoUrl} />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
             {children}
           </main>

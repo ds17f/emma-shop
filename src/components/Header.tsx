@@ -5,9 +5,16 @@ import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { SHOP_LOGO } from "@/lib/brand";
 
-export function Header({ shopName }: { shopName: string }) {
+export function Header({
+  shopName,
+  logoUrl,
+}: {
+  shopName: string;
+  logoUrl?: string | null;
+}) {
   const { count } = useCart();
   const [logoOk, setLogoOk] = useState(true);
+  const logoSrc = logoUrl || SHOP_LOGO;
 
   // Color the last word of the shop name as a playful accent.
   const words = shopName.trim().split(" ");
@@ -21,7 +28,7 @@ export function Header({ shopName }: { shopName: string }) {
           {logoOk && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={SHOP_LOGO}
+              src={logoSrc}
               alt=""
               onError={() => setLogoOk(false)}
               className="h-10 w-10 rounded-full border-2 border-ink bg-white object-cover"

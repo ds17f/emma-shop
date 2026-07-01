@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import { requireStripe } from "@/lib/stripe";
 import { SETTINGS_ID } from "@/lib/settings";
+import { TOKEN_KEYS, normalizeHex } from "@/lib/theme";
 
 async function requireAdmin() {
   const session = await auth();
@@ -288,6 +289,35 @@ export async function updateSettings(formData: FormData) {
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
   redirect("/admin/settings?ok=1");
+}
+
+// ---------- Appearance (colors + logo) ----------
+
+export async function updateAppearance(formData: FormData) {
+  await requireAdmin();
+
+  // Keep only known tokens with valid hex values; drop the rest so the stored
+  // JSON can never carry junk into the <html> style attribute.
+  const colors: Record<string, string> = {};
+  for (const key of TOKEN_KEYS) {
+    const hex = normalizeHex(formData.get(`color_${key}`));
+    if (hex) colors[key] = hex;
+  }
+  const themeJson = Object.keys(colors).length ? JSON.stringify(colors) : null;
+
+  // Only accept our own uploaded paths; empty clears back to the default logo.
+  const rawLogo = String(formData.get("logoUrl") ?? "").trim();
+  const logoUrl = rawLogo.startsWith("/uploads/") ? rawLogo : null;
+
+  await prisma.storeSettings.upsert({
+    where: { id: SETTINGS_ID },
+    create: { id: SETTINGS_ID, themeJson, logoUrl },
+    update: { themeJson, logoUrl },
+  });
+
+  revalidatePath("/admin/appearance");
+  revalidatePath("/", "layout");
+  redirect("/admin/appearance?ok=1");
 }
 
 // ---------- Admin users & customers ----------

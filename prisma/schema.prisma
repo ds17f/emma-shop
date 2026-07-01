@@ -109,6 +109,12 @@ model StoreSettings {
   tagline      String @default("Handmade goods from across the galaxy")
   contactEmail String @default("")
 
+  // Appearance (admin "Appearance" page). logoUrl = uploaded logo (null → the
+  // /logo.png default). themeJson = JSON map of color-token overrides (null →
+  // the globals.css palette). See src/lib/theme.ts.
+  logoUrl   String?
+  themeJson String?
+
   // Shipping (cents). freeShippingThresholdCents = null disables the free tier.
   shippingFlatCents          Int  @default(700)
   freeShippingThresholdCents Int?
