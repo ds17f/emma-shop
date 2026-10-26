@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin";
 import Link from "next/link";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -12,6 +13,7 @@ export default async function AdminOrders({
 }: {
   searchParams: Promise<{ status?: string; q?: string }>;
 }) {
+  await requireAdminPage();
   const { status, q } = await searchParams;
   const activeStatus = status && STATUS_FILTERS.includes(status) ? status : "ALL";
 

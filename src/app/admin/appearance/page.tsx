@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin";
 import { getSettings } from "@/lib/settings";
 import { updateAppearance } from "@/app/admin/actions";
 import { parseTheme, resolveColors } from "@/lib/theme";
@@ -10,6 +11,7 @@ export default async function AdminAppearance({
 }: {
   searchParams: Promise<{ ok?: string }>;
 }) {
+  await requireAdminPage();
   const { ok } = await searchParams;
   const s = await getSettings();
   const colors = resolveColors(parseTheme(s.themeJson));

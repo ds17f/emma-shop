@@ -9,15 +9,18 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   // --- Admin user ---
-  const adminEmail = process.env.ADMIN_EMAIL ?? "admin@example.com";
-  const adminPassword = process.env.ADMIN_PASSWORD ?? "changeme123";
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminEmail || !adminPassword || adminPassword.length < 8) {
+    throw new Error("Set ADMIN_EMAIL and ADMIN_PASSWORD (at least 8 characters) before seeding");
+  }
   const passwordHash = await bcrypt.hash(adminPassword, 10);
   await prisma.adminUser.upsert({
     where: { email: adminEmail },
     update: {},
     create: { email: adminEmail, passwordHash, name: "Shop Owner" },
   });
-  console.log(`Admin user ready: ${adminEmail} (password: ${adminPassword})`);
+  console.log(`Admin user ready: ${adminEmail}`);
 
   // --- Categories ---
   const categories = [

@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 import { formatPrice } from "@/lib/money";
@@ -27,6 +28,7 @@ export default async function AdminUsers({
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
+  await requireAdminPage();
   const { ok, error } = await searchParams;
   const session = await auth();
   const myEmail = session?.user?.email ?? "";

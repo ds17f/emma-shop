@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { formatPrice } from "@/lib/money";
@@ -8,6 +9,7 @@ import { ConfirmButton } from "@/components/admin/ConfirmButton";
 export const dynamic = "force-dynamic";
 
 export default async function AdminProducts() {
+  await requireAdminPage();
   const products = await prisma.product.findMany({
     include: { variants: true, category: true },
     orderBy: { createdAt: "desc" },

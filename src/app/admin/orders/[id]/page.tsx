@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -37,6 +38,7 @@ export default async function OrderDetail({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
+  await requireAdminPage();
   const { id } = await params;
   const { ok, error } = await searchParams;
   const banner = ok
