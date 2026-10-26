@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin";
 import { getSettings } from "@/lib/settings";
 import { updateSettings } from "@/app/admin/actions";
 
@@ -8,6 +9,7 @@ export default async function AdminSettings({
 }: {
   searchParams: Promise<{ ok?: string }>;
 }) {
+  await requireAdminPage();
   const { ok } = await searchParams;
   const s = await getSettings();
   const freeEnabled = s.freeShippingThresholdCents != null;

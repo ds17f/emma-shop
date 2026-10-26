@@ -211,7 +211,7 @@ export function AppearanceEditor({
             <div className="flex flex-wrap items-center gap-2">
               <label className="btn-white btn-sm cursor-pointer">
                 {uploading ? "Uploading…" : "Upload logo"}
-                <input type="file" accept="image/*" onChange={handleLogo} className="hidden" disabled={uploading} />
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleLogo} className="hidden" disabled={uploading} />
               </label>
               {logo && (
                 <button type="button" onClick={() => setLogo("")} className="btn-white btn-sm">

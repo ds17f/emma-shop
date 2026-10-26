@@ -1,14 +1,10 @@
+import { csvCell } from "@/lib/security";
 import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { auth } from "@/auth";
 
 const STATUS_FILTERS = ["ALL", "PAID", "SHIPPED", "FULFILLED", "CANCELLED"];
-
-function csvCell(value: string | number): string {
-  const s = String(value);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 export async function GET(req: Request) {
   const session = await auth();

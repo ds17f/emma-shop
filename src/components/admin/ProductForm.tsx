@@ -148,7 +148,7 @@ export function ProductForm({ action, categories, initial }: Props) {
             +
             <input
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/gif"
               multiple
               onChange={handleUpload}
               className="hidden"

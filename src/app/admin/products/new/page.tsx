@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin";
 import { ProductForm } from "@/components/admin/ProductForm";
 import { getCategories } from "@/lib/queries";
 import { createProduct } from "@/app/admin/actions";
@@ -5,6 +6,7 @@ import { createProduct } from "@/app/admin/actions";
 export const dynamic = "force-dynamic";
 
 export default async function NewProductPage() {
+  await requireAdminPage();
   const categories = await getCategories();
   return (
     <div className="space-y-5">

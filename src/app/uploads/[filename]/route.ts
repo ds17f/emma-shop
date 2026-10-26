@@ -39,6 +39,8 @@ export async function GET(
     const file = await readFile(filePath);
     return new NextResponse(new Uint8Array(file), {
       headers: {
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+        "X-Content-Type-Options": "nosniff",
         "Content-Type": CONTENT_TYPES[ext] ?? "application/octet-stream",
         "Cache-Control": "public, max-age=31536000, immutable",
       },

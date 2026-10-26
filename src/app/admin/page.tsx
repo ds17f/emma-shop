@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { formatPrice } from "@/lib/money";
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 const LOW_STOCK_THRESHOLD = 2;
 
 export default async function AdminDashboard() {
+  await requireAdminPage();
   const [recentOrders, lowStock, productCount, pendingPaid] = await Promise.all([
     prisma.order.findMany({
       where: { status: { not: "PENDING" } },

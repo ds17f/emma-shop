@@ -20,6 +20,12 @@ type OrderForEmail = {
   items: { nameSnapshot: string; priceCents: number; quantity: number }[];
 };
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[char]!);
+}
+
 type EmailSettings = { shopName: string; contactEmail: string };
 
 function renderAddress(raw: string): string {
@@ -33,7 +39,7 @@ function renderAddress(raw: string): string {
       [a.city, a.state, a.postal_code].filter(Boolean).join(", "),
       a.country,
     ].filter(Boolean);
-    return lines.join("<br>");
+    return lines.map(escapeHtml).join("<br>");
   } catch {
     return "";
   }
@@ -43,7 +49,7 @@ function itemsTable(order: OrderForEmail): string {
   const rows = order.items
     .map(
       (i) =>
-        `<tr><td style="padding:4px 0">${i.nameSnapshot} × ${i.quantity}</td>` +
+        `<tr><td style="padding:4px 0">${escapeHtml(i.nameSnapshot)} × ${i.quantity}</td>` +
         `<td style="padding:4px 0;text-align:right">${formatPrice(i.priceCents * i.quantity)}</td></tr>`,
     )
     .join("");
@@ -86,12 +92,12 @@ export async function sendOrderEmails(
         subject: `Your ${shop} order is confirmed 🎉`,
         html:
           `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#08172b">` +
-          `<h1 style="font-size:22px">Thank you${order.customerName ? `, ${order.customerName}` : ""}! 🎉</h1>` +
+          `<h1 style="font-size:22px">Thank you${order.customerName ? `, ${escapeHtml(order.customerName)}` : ""}! 🎉</h1>` +
           `<p>We received your order <strong>#${shortId}</strong> and we’re packing it up. ` +
           `You’ll get a note when it ships.</p>` +
           `<h3 style="margin-top:24px">Your order</h3>${items}` +
           (addr ? `<h3 style="margin-top:24px">Shipping to</h3><p style="font-size:14px">${addr}</p>` : "") +
-          `<p style="margin-top:24px;color:#666;font-size:13px">— ${shop}</p>` +
+          `<p style="margin-top:24px;color:#666;font-size:13px">— ${escapeHtml(shop)}</p>` +
           `</div>`,
       });
     } catch (err) {
@@ -110,7 +116,7 @@ export async function sendOrderEmails(
         html:
           `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#08172b">` +
           `<h2>New order #${shortId}</h2>` +
-          `<p><strong>Customer:</strong> ${order.customerName || "—"} &lt;${order.email || "—"}&gt;</p>` +
+          `<p><strong>Customer:</strong> ${escapeHtml(order.customerName || "—")} &lt;${escapeHtml(order.email || "—")}&gt;</p>` +
           items +
           (addr ? `<h3 style="margin-top:24px">Ship to</h3><p style="font-size:14px">${addr}</p>` : "") +
           `</div>`,

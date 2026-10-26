@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     );
   }
 
-  if (event.type === "checkout.session.completed") {
+  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
     const session = event.data.object as Stripe.Checkout.Session;
     const orderId = session.metadata?.orderId ?? session.client_reference_id;
     if (orderId) {
@@ -50,12 +50,13 @@ export async function POST(req: Request) {
 }
 
 async function fulfillOrder(orderId: string, session: Stripe.Checkout.Session) {
+  if (session.payment_status !== "paid") return;
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { items: true },
   });
   // Idempotency: only fulfill a still-pending order once.
-  if (!order || order.status !== "PENDING") return;
+  if (!order || order.status !== "PENDING" || order.stripeSessionId !== session.id) return;
 
   const shipping =
     session.collected_information?.shipping_details ??
@@ -70,9 +71,9 @@ async function fulfillOrder(orderId: string, session: Stripe.Checkout.Session) {
       ? session.payment_intent
       : (session.payment_intent?.id ?? null);
 
-  await prisma.$transaction([
-    prisma.order.update({
-      where: { id: orderId },
+  const fulfilled = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.order.updateMany({
+      where: { id: orderId, status: "PENDING", stripeSessionId: session.id },
       data: {
         status: "PAID",
         email,
@@ -81,17 +82,18 @@ async function fulfillOrder(orderId: string, session: Stripe.Checkout.Session) {
         totalCents,
         stripePaymentIntentId: paymentIntentId,
       },
-    }),
-    // Decrement inventory for each purchased variant.
-    ...order.items
-      .filter((i) => i.variantId)
-      .map((i) =>
-        prisma.variant.update({
-          where: { id: i.variantId! },
-          data: { stock: { decrement: i.quantity } },
-        }),
-      ),
-  ]);
+    });
+    if (claimed.count !== 1) return false;
+    for (const item of order.items) {
+      if (!item.variantId) continue;
+      await tx.variant.update({
+        where: { id: item.variantId },
+        data: { stock: { decrement: item.quantity } },
+      });
+    }
+    return true;
+  });
+  if (!fulfilled) return;
 
   // Fire confirmation emails after the order is committed PAID. sendOrderEmails
   // never throws, so a mail outage can't fail the webhook or trigger a Stripe

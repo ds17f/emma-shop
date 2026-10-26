@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin";
 import { prisma } from "@/lib/db";
 import { createCategory, deleteCategory } from "@/app/admin/actions";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
@@ -5,6 +6,7 @@ import { ConfirmButton } from "@/components/admin/ConfirmButton";
 export const dynamic = "force-dynamic";
 
 export default async function AdminCategories() {
+  await requireAdminPage();
   const categories = await prisma.category.findMany({
     include: { _count: { select: { products: true } } },
     orderBy: { name: "asc" },

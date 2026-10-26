@@ -8,14 +8,25 @@ const bodySchema = z.object({
   items: z
     .array(
       z.object({
-        variantId: z.string().min(1),
-        quantity: z.number().int().positive(),
+        variantId: z.string().min(1).max(128),
+        quantity: z.number().int().positive().max(999),
       }),
     )
-    .min(1),
+    .min(1).max(100)
+    .refine((items) => new Set(items.map((item) => item.variantId)).size === items.length, "Duplicate variants"),
 });
 
 export async function POST(req: Request) {
+  // Payment redirects and image URLs must use a configured, trusted origin.
+  const configuredUrl = process.env.AUTH_URL;
+  if (!configuredUrl && process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Shop URL not configured" }, { status: 500 });
+  }
+  const origin = new URL(configuredUrl || "http://localhost:3000").origin;
+  if (req.headers.get("origin") !== origin) {
+    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+  }
+
   let stripe;
   try {
     stripe = requireStripe();
@@ -54,7 +65,6 @@ export async function POST(req: Request) {
   }[] = [];
   let totalCents = 0;
 
-  const origin = req.headers.get("origin") ?? new URL(req.url).origin;
 
   for (const item of parsed.data.items) {
     const variant = variants.find((v) => v.id === item.variantId);
