@@ -35,7 +35,7 @@ the production/hosting plan.
 
 ## Quick start (local development)
 
-Requires Node 22+.
+Requires Node 24.22.1+.
 
 ```bash
 make setup     # installs deps, copies .env, runs migrations, seeds sample data

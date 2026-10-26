@@ -44,9 +44,9 @@ full (production-installed) `node_modules` running `next start` is simpler and
 more reliable than tracing those into a standalone bundle.
 
 ### 2. Dockerfile (multi-stage)
-- **build stage** (`node:22-bookworm-slim` + python3/make/g++/openssl): `npm ci`,
+- **build stage** (`node:24.22.1-bookworm-slim` + python3/make/g++/openssl): `npm ci`,
   `prisma generate`, `npm run build`. The build tools compile `better-sqlite3`.
-- **runtime stage** (`node:22-bookworm-slim` + openssl): copies `node_modules`
+- **runtime stage** (`node:24.22.1-bookworm-slim` + openssl): copies `node_modules`
   (with the compiled binding, Prisma CLI, and tsx), `.next`, `public`,
   `src/generated`, `prisma/`, and configs. Creates `/app/data` + uploads dirs.
 - Entry point: `docker-entrypoint.sh` runs `prisma migrate deploy`, then
