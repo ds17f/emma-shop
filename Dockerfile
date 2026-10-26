@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---------- build stage ----------
-FROM node:24.22.1-bookworm-slim AS build
+FROM node:26.12.1-bookworm-slim AS build
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY . .
 RUN npx prisma generate && npm run build
 
 # ---------- runtime stage ----------
-FROM node:24.22.1-bookworm-slim AS runner
+FROM node:26.12.1-bookworm-slim AS runner
 ENV NODE_ENV=production \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PORT=3000 \
